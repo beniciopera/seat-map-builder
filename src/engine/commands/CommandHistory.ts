@@ -29,6 +29,12 @@ export class CommandHistory {
     this.emitChange();
   }
 
+  replaceLast(command: Command): void {
+    if (this.undoStack.length > 0) {
+      this.undoStack[this.undoStack.length - 1] = command;
+    }
+  }
+
   redo(): void {
     const command = this.redoStack.pop();
     if (!command) return;

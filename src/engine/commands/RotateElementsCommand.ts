@@ -1,7 +1,15 @@
 import type { Command } from './Command';
 import type { ElementId, MapElement } from '@/src/domain/types';
-import type { Point } from '@/src/domain/geometry';
+import { isRow } from '@/src/domain/types';
+import type { Point, Rect } from '@/src/domain/geometry';
 import type { EditorEngine } from '../EditorEngine';
+
+interface SavedTransform {
+  position: Point;
+  rotation: number;
+  bounds: Rect;
+  orientationAngle?: number;
+}
 
 export class RotateElementsCommand implements Command {
   readonly name = 'Rotate Elements';
@@ -9,7 +17,7 @@ export class RotateElementsCommand implements Command {
   private ids: ElementId[];
   private angle: number;
   private center: Point;
-  private oldTransforms: Map<ElementId, { position: Point; rotation: number }> = new Map();
+  private oldTransforms: Map<ElementId, SavedTransform> = new Map();
 
   constructor(engine: EditorEngine, ids: ElementId[], angle: number, center: Point) {
     this.engine = engine;
@@ -20,10 +28,15 @@ export class RotateElementsCommand implements Command {
     for (const id of ids) {
       const el = engine.state.get(id);
       if (el) {
-        this.oldTransforms.set(id, {
+        const saved: SavedTransform = {
           position: el.transform.position,
           rotation: el.transform.rotation,
-        });
+          bounds: el.bounds,
+        };
+        if (isRow(el)) {
+          saved.orientationAngle = el.orientationAngle;
+        }
+        this.oldTransforms.set(id, saved);
       }
     }
   }
@@ -36,10 +49,14 @@ export class RotateElementsCommand implements Command {
     for (const [id, old] of this.oldTransforms) {
       const el = this.engine.state.get(id);
       if (!el) continue;
-      const merged = {
+      let merged = {
         ...el,
         transform: { ...el.transform, position: old.position, rotation: old.rotation },
+        bounds: old.bounds,
       } as MapElement;
+      if (isRow(merged) && old.orientationAngle !== undefined) {
+        merged = { ...merged, orientationAngle: old.orientationAngle } as MapElement;
+      }
       this.engine.state.set(id, merged);
       this.engine.spatialIndex.update(merged);
     }
@@ -66,7 +83,7 @@ export class RotateElementsCommand implements Command {
         y: this.center.y + dx * sin + dy * cos,
       };
 
-      const merged = {
+      let merged = {
         ...el,
         transform: {
           ...el.transform,
@@ -79,6 +96,10 @@ export class RotateElementsCommand implements Command {
           y: newPos.y - el.bounds.height / 2,
         },
       } as MapElement;
+
+      if (isRow(merged)) {
+        merged = { ...merged, orientationAngle: merged.orientationAngle + angle } as MapElement;
+      }
 
       this.engine.state.set(id, merged);
       this.engine.spatialIndex.update(merged);
