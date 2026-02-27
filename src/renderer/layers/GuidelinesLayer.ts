@@ -9,28 +9,32 @@ export class GuidelinesLayer {
     this.layer = new Konva.Layer({ name: 'guidelines', listening: false });
   }
 
-  updateGuidelines(guidelines: Guideline[], visibleBounds: { x: number; y: number; width: number; height: number }): void {
+  updateGuidelines(guidelines: Guideline[], visibleBounds: { x: number; y: number; width: number; height: number }, zoom: number = 1): void {
     // Clear old lines
     for (const line of this.lines) {
       line.destroy();
     }
     this.lines = [];
 
-    for (const gl of guidelines) {
-      const color = gl.alignmentType === 'center' ? '#E91E63' : '#00BCD4';
-      let points: number[];
+    // Extend lines well beyond visible bounds
+    const extent = Math.max(visibleBounds.width, visibleBounds.height) * 2;
 
-      if (gl.axis === 'vertical') {
-        points = [gl.position, visibleBounds.y - 1000, gl.position, visibleBounds.y + visibleBounds.height + 1000];
-      } else {
-        points = [visibleBounds.x - 1000, gl.position, visibleBounds.x + visibleBounds.width + 1000, gl.position];
-      }
+    for (const gl of guidelines) {
+      const cosA = Math.cos(gl.angle);
+      const sinA = Math.sin(gl.angle);
+
+      const px = gl.throughPoint.x;
+      const py = gl.throughPoint.y;
+
+      const points = [
+        px - cosA * extent, py - sinA * extent,
+        px + cosA * extent, py + sinA * extent,
+      ];
 
       const line = new Konva.Line({
         points,
-        stroke: color,
-        strokeWidth: 1 / 1, // Will be adjusted by zoom
-        dash: [4, 4],
+        stroke: 'rgba(233, 30, 99, 0.35)',
+        strokeWidth: 0.5 / zoom,
         listening: false,
       });
 

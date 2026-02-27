@@ -1,6 +1,5 @@
 import type { Guideline } from '@/src/domain/geometry';
-import type { ElementId } from '@/src/domain/types';
-import type { SnapTarget } from './SnapEngine';
+import type { SnapTarget, AngleSnapTarget } from './SnapEngine';
 import type { EditorEngine } from '../EditorEngine';
 
 export class GuidelinesEngine {
@@ -11,20 +10,41 @@ export class GuidelinesEngine {
     this.engine = engine;
   }
 
-  computeFromSnapTargets(matchedTargets: SnapTarget[]): Guideline[] {
+  computeFromSnapTargets(matchedTargets: SnapTarget[], angleTargets: AngleSnapTarget[] = []): Guideline[] {
     const guidelines: Guideline[] = [];
 
     for (const target of matchedTargets) {
-      const axis = target.axis === 'x' ? 'vertical' : 'horizontal';
       const alignmentType = target.type === 'center' ? 'center' as const
         : (target.type === 'edge-left' || target.type === 'edge-top') ? 'edge-start' as const
         : 'edge-end' as const;
 
+      // Convert axis-aligned targets to throughPoint+angle format
+      if (target.axis === 'x') {
+        // Vertical line through x=value
+        guidelines.push({
+          throughPoint: { x: target.value, y: 0 },
+          angle: Math.PI / 2,
+          sourceElementId: target.sourceElementId as string,
+          alignmentType,
+        });
+      } else {
+        // Horizontal line through y=value
+        guidelines.push({
+          throughPoint: { x: 0, y: target.value },
+          angle: 0,
+          sourceElementId: target.sourceElementId as string,
+          alignmentType,
+        });
+      }
+    }
+
+    // Add angle-aware guidelines directly
+    for (const target of angleTargets) {
       guidelines.push({
-        axis,
-        position: target.value,
+        throughPoint: target.throughPoint,
+        angle: target.angle,
         sourceElementId: target.sourceElementId as string,
-        alignmentType,
+        alignmentType: target.alignmentType,
       });
     }
 
