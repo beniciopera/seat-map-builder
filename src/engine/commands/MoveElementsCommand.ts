@@ -1,0 +1,45 @@
+import type { Command } from './Command';
+import type { ElementId, MapElement } from '@/src/domain/types';
+import type { Point } from '@/src/domain/geometry';
+import type { EditorEngine } from '../EditorEngine';
+
+export class MoveElementsCommand implements Command {
+  readonly name = 'Move Elements';
+  private engine: EditorEngine;
+  private before: Map<ElementId, Point>;
+  private after: Map<ElementId, Point>;
+
+  constructor(engine: EditorEngine, before: Map<ElementId, Point>, after: Map<ElementId, Point>) {
+    this.engine = engine;
+    this.before = before;
+    this.after = after;
+  }
+
+  execute(): void {
+    this.applyPositions(this.after);
+  }
+
+  undo(): void {
+    this.applyPositions(this.before);
+  }
+
+  private applyPositions(positions: Map<ElementId, Point>): void {
+    const updated: MapElement[] = [];
+    for (const [id, pos] of positions) {
+      const el = this.engine.state.get(id);
+      if (!el) continue;
+      const merged = {
+        ...el,
+        transform: { ...el.transform, position: pos },
+        bounds: { ...el.bounds, x: pos.x - el.bounds.width / 2, y: pos.y - el.bounds.height / 2 },
+      } as MapElement;
+      this.engine.state.set(id, merged);
+      this.engine.spatialIndex.update(merged);
+      updated.push(merged);
+    }
+    if (updated.length > 0) {
+      this.engine.events.emit('elements:updated', { elements: updated });
+      this.engine.events.emit('render:request', {});
+    }
+  }
+}

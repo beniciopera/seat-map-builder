@@ -1,0 +1,604 @@
+import Konva from 'konva';
+import type { ElementId, Seat, Area, Row } from '@/src/domain/types';
+import { isRow, isSeat, isArea } from '@/src/domain/types';
+import type { Point } from '@/src/domain/geometry';
+import type { EditorEngine } from '@/src/engine/EditorEngine';
+import type { ElementLayer } from './ElementLayer';
+import { applySeatSelection, clearSeatSelection } from '../shapes/SeatShape';
+import { applyAreaSelection, clearAreaSelection } from '../shapes/AreaShape';
+import { applyTableSelection, clearTableSelection } from '../shapes/TableShape';
+import { distance, arcFromSagitta } from '@/src/utils/math';
+
+export class SelectionLayer {
+  readonly layer: Konva.Layer;
+  private previousSelectedIds: ElementId[] = [];
+  private groupBoundingBox: Konva.Rect | null = null;
+  private boxSelectRect: Konva.Rect | null = null;
+
+  // Row shadow shapes (rect for straight, custom shape for curved)
+  private rowShadows = new Map<ElementId, Konva.Shape | Konva.Rect>();
+
+  // Extension handles
+  private leftHandle: Konva.Circle | null = null;
+  private rightHandle: Konva.Circle | null = null;
+  handlePositions: { left: Point; right: Point } | null = null;
+
+  // Curve handle
+  private curveHandle: Konva.Circle | null = null;
+  curveHandlePosition: Point | null = null;
+
+  // Rotation handle
+  private rotationHandle: Konva.Circle | null = null;
+  private rotationLine: Konva.Line | null = null;
+  rotationHandlePosition: Point | null = null;
+
+  // Resize handles (area corners)
+  private resizeHandles: Konva.Rect[] = [];
+  resizeHandlePositions: { corner: string; position: Point }[] | null = null;
+
+  constructor() {
+    this.layer = new Konva.Layer({ name: 'selection' });
+  }
+
+  updateSelection(
+    selectedIds: ElementId[],
+    engine: EditorEngine,
+    elementLayer: ElementLayer,
+    toolState?: string,
+  ): void {
+    // 1. Clear previous selections
+    for (const id of this.previousSelectedIds) {
+      const el = engine.state.get(id);
+      const node = elementLayer.getNode(id);
+      if (!el || !node) continue;
+
+      switch (el.type) {
+        case 'seat':
+          clearSeatSelection(node, el as Seat);
+          break;
+        case 'area':
+          clearAreaSelection(node, el as Area);
+          break;
+        case 'table':
+          clearTableSelection(node);
+          break;
+        case 'row': {
+          const row = el as Row;
+          for (const seatId of row.seatIds) {
+            const seatEl = engine.state.get(seatId);
+            const seatNode = elementLayer.getNode(seatId);
+            if (seatEl && seatNode && seatEl.type === 'seat') {
+              clearSeatSelection(seatNode, seatEl as Seat);
+            }
+          }
+          node.opacity(1);
+          break;
+        }
+      }
+    }
+
+    // Clear row shadows
+    for (const shadow of this.rowShadows.values()) {
+      shadow.destroy();
+    }
+    this.rowShadows.clear();
+
+    // Clear handles
+    this.clearHandles();
+
+    // 2. If nothing selected, hide bounding box and return
+    if (selectedIds.length === 0) {
+      if (this.groupBoundingBox) {
+        this.groupBoundingBox.visible(false);
+      }
+      this.previousSelectedIds = [];
+      this.layer.batchDraw();
+      return;
+    }
+
+    // Collect unique row IDs from selection
+    const selectedRowIds = new Set<ElementId>();
+    for (const id of selectedIds) {
+      const el = engine.state.get(id);
+      if (!el) continue;
+      if (isRow(el)) {
+        selectedRowIds.add(el.id);
+      } else if (isSeat(el) && el.rowId) {
+        selectedRowIds.add(el.rowId);
+      }
+    }
+
+    // 3. Draw row shadows for each selected row (skip during editing)
+    const isEditingRow = toolState === 'rotating' || toolState === 'curving-row' || toolState === 'extending-row';
+    if (!isEditingRow) {
+    for (const rowId of selectedRowIds) {
+      const row = engine.state.get(rowId);
+      if (!row || !isRow(row) || row.seatIds.length < 2) continue;
+
+      const firstSeat = engine.state.get(row.seatIds[0]);
+      const lastSeat = engine.state.get(row.seatIds[row.seatIds.length - 1]);
+      if (!firstSeat || !lastSeat || !isSeat(firstSeat) || !isSeat(lastSeat)) continue;
+
+      const firstPos = firstSeat.transform.position;
+      const lastPos = lastSeat.transform.position;
+      const seatRadius = firstSeat.radius;
+
+      if (row.curveRadius && Math.abs(row.curveRadius) > 2) {
+        // Curved shadow: draw arc band
+        const arc = arcFromSagitta(firstPos, lastPos, row.curveRadius);
+        const innerR = arc.radius - seatRadius - 5;
+        const outerR = arc.radius + seatRadius + 5;
+
+        const shadow = new Konva.Shape({
+          sceneFunc: (context, shape) => {
+            context.beginPath();
+            // Outer arc
+            if (arc.angleDiff > 0) {
+              context.arc(0, 0, outerR, arc.startAngle, arc.startAngle + arc.angleDiff, false);
+            } else {
+              context.arc(0, 0, outerR, arc.startAngle, arc.startAngle + arc.angleDiff, true);
+            }
+            // Inner arc (reverse direction)
+            if (arc.angleDiff > 0) {
+              context.arc(0, 0, Math.max(0, innerR), arc.startAngle + arc.angleDiff, arc.startAngle, true);
+            } else {
+              context.arc(0, 0, Math.max(0, innerR), arc.startAngle + arc.angleDiff, arc.startAngle, false);
+            }
+            context.closePath();
+            context.fillStrokeShape(shape);
+          },
+          x: arc.center.x,
+          y: arc.center.y,
+          fill: 'rgba(66, 133, 244, 0.08)',
+          listening: false,
+        });
+        this.layer.add(shadow);
+        shadow.moveToBottom();
+        this.rowShadows.set(rowId, shadow);
+      } else {
+        // Straight shadow: rect
+        const midX = (firstPos.x + lastPos.x) / 2;
+        const midY = (firstPos.y + lastPos.y) / 2;
+        const rowLen = distance(firstPos, lastPos);
+        const shadowWidth = rowLen + 2 * seatRadius + 8;
+        const shadowHeight = 2 * seatRadius + 10;
+        const angleDeg = row.orientationAngle * (180 / Math.PI);
+
+        const shadow = new Konva.Rect({
+          x: midX,
+          y: midY,
+          width: shadowWidth,
+          height: shadowHeight,
+          offsetX: shadowWidth / 2,
+          offsetY: shadowHeight / 2,
+          rotation: angleDeg,
+          fill: 'rgba(66, 133, 244, 0.08)',
+          cornerRadius: 6,
+          listening: false,
+        });
+        this.layer.add(shadow);
+        shadow.moveToBottom();
+        this.rowShadows.set(rowId, shadow);
+      }
+    }
+    } // end if (!isEditingRow)
+
+    // 4. Apply selection visuals to each selected element
+    for (const id of selectedIds) {
+      const el = engine.state.get(id);
+      const node = elementLayer.getNode(id);
+      if (!el || !node) continue;
+
+      switch (el.type) {
+        case 'seat':
+          applySeatSelection(node);
+          break;
+        case 'area':
+          applyAreaSelection(node);
+          break;
+        case 'table':
+          applyTableSelection(node);
+          break;
+        case 'row': {
+          const row = el as Row;
+          for (const seatId of row.seatIds) {
+            const seatNode = elementLayer.getNode(seatId);
+            if (seatNode) {
+              applySeatSelection(seatNode);
+            }
+          }
+          node.opacity(0.85);
+          break;
+        }
+      }
+    }
+
+    // 5. Show extension handles and curve handle if exactly one row is selected
+    if (selectedRowIds.size === 1) {
+      const rowId = selectedRowIds.values().next().value as ElementId;
+      const row = engine.state.get(rowId);
+      if (row && isRow(row) && row.seatIds.length >= 1) {
+        this.showHandles(row, engine);
+        if (row.seatIds.length >= 2) {
+          this.showCurveHandle(row, engine);
+        }
+      }
+    }
+
+    // 6. Show rotation handle for single element selection
+    if (selectedIds.length >= 1) {
+      // Find the "primary" element (skip seats that belong to rows if a row is also selected)
+      let primaryEl = engine.state.get(selectedIds[0]);
+      if (primaryEl && isSeat(primaryEl) && primaryEl.rowId && selectedRowIds.size === 1) {
+        primaryEl = engine.state.get(selectedRowIds.values().next().value as ElementId);
+      }
+      if (primaryEl) {
+        this.showRotationHandle(primaryEl, engine);
+      }
+    }
+
+    // 6b. Show resize handles if exactly one area is selected
+    if (selectedIds.length === 1) {
+      const singleEl = engine.state.get(selectedIds[0]);
+      if (singleEl && isArea(singleEl)) {
+        this.showResizeHandles(singleEl as Area);
+      }
+    }
+
+    // 7. Multi-selection bounding box
+    if (selectedIds.length > 1) {
+      let minX = Infinity;
+      let minY = Infinity;
+      let maxX = -Infinity;
+      let maxY = -Infinity;
+
+      for (const id of selectedIds) {
+        const el = engine.state.get(id);
+        if (!el) continue;
+        minX = Math.min(minX, el.bounds.x);
+        minY = Math.min(minY, el.bounds.y);
+        maxX = Math.max(maxX, el.bounds.x + el.bounds.width);
+        maxY = Math.max(maxY, el.bounds.y + el.bounds.height);
+      }
+
+      const padding = 6;
+      if (!this.groupBoundingBox) {
+        this.groupBoundingBox = new Konva.Rect({
+          stroke: 'rgba(120, 120, 120, 0.35)',
+          strokeWidth: 0.75,
+          fill: 'transparent',
+          cornerRadius: 2,
+          listening: false,
+        });
+        this.layer.add(this.groupBoundingBox);
+      }
+
+      this.groupBoundingBox.x(minX - padding);
+      this.groupBoundingBox.y(minY - padding);
+      this.groupBoundingBox.width(maxX - minX + padding * 2);
+      this.groupBoundingBox.height(maxY - minY + padding * 2);
+      this.groupBoundingBox.visible(true);
+    } else {
+      if (this.groupBoundingBox) {
+        this.groupBoundingBox.visible(false);
+      }
+    }
+
+    this.previousSelectedIds = [...selectedIds];
+    this.layer.batchDraw();
+  }
+
+  private showHandles(row: Row, engine: EditorEngine): void {
+    const firstSeat = engine.state.get(row.seatIds[0]);
+    const lastSeat = engine.state.get(row.seatIds[row.seatIds.length - 1]);
+    if (!firstSeat || !lastSeat || !isSeat(firstSeat) || !isSeat(lastSeat)) return;
+
+    const firstPos = firstSeat.transform.position;
+    const lastPos = lastSeat.transform.position;
+    const offset = firstSeat.radius + 6;
+
+    let leftPos: Point;
+    let rightPos: Point;
+
+    if (row.curveRadius && Math.abs(row.curveRadius) > 2 && row.seatIds.length >= 2) {
+      // Curved row: position handles along arc tangent at endpoints
+      const arc = arcFromSagitta(firstPos, lastPos, row.curveRadius);
+      const s = arc.angleDiff > 0 ? 1 : -1;
+
+      // Left (first seat): outward tangent = opposite of arc traversal direction
+      const leftDirX = s * Math.sin(arc.startAngle);
+      const leftDirY = s * -Math.cos(arc.startAngle);
+      leftPos = {
+        x: firstPos.x + leftDirX * offset,
+        y: firstPos.y + leftDirY * offset,
+      };
+
+      // Right (last seat): outward tangent = same as arc traversal direction
+      const rightDirX = s * -Math.sin(arc.endAngle);
+      const rightDirY = s * Math.cos(arc.endAngle);
+      rightPos = {
+        x: lastPos.x + rightDirX * offset,
+        y: lastPos.y + rightDirY * offset,
+      };
+    } else {
+      // Straight row: use orientationAngle
+      const angle = row.orientationAngle;
+      const dirX = Math.cos(angle);
+      const dirY = Math.sin(angle);
+      leftPos = {
+        x: firstPos.x - dirX * offset,
+        y: firstPos.y - dirY * offset,
+      };
+      rightPos = {
+        x: lastPos.x + dirX * offset,
+        y: lastPos.y + dirY * offset,
+      };
+    }
+
+    this.handlePositions = { left: leftPos, right: rightPos };
+
+    this.leftHandle = new Konva.Circle({
+      x: leftPos.x,
+      y: leftPos.y,
+      radius: 5,
+      fill: 'rgba(66, 133, 244, 0.5)',
+      stroke: 'rgba(66, 133, 244, 0.8)',
+      strokeWidth: 1.5,
+      listening: true,
+    });
+    this.leftHandle.on('mouseenter', () => {
+      document.body.style.cursor = 'pointer';
+    });
+    this.leftHandle.on('mouseleave', () => {
+      document.body.style.cursor = 'default';
+    });
+
+    this.rightHandle = new Konva.Circle({
+      x: rightPos.x,
+      y: rightPos.y,
+      radius: 5,
+      fill: 'rgba(66, 133, 244, 0.5)',
+      stroke: 'rgba(66, 133, 244, 0.8)',
+      strokeWidth: 1.5,
+      listening: true,
+    });
+    this.rightHandle.on('mouseenter', () => {
+      document.body.style.cursor = 'pointer';
+    });
+    this.rightHandle.on('mouseleave', () => {
+      document.body.style.cursor = 'default';
+    });
+
+    this.layer.add(this.leftHandle);
+    this.layer.add(this.rightHandle);
+  }
+
+  private clearHandles(): void {
+    if (this.leftHandle) {
+      this.leftHandle.destroy();
+      this.leftHandle = null;
+    }
+    if (this.rightHandle) {
+      this.rightHandle.destroy();
+      this.rightHandle = null;
+    }
+    this.handlePositions = null;
+    this.clearCurveHandle();
+    this.clearRotationHandle();
+    this.clearResizeHandles();
+  }
+
+  private clearCurveHandle(): void {
+    if (this.curveHandle) {
+      this.curveHandle.destroy();
+      this.curveHandle = null;
+    }
+    this.curveHandlePosition = null;
+  }
+
+  private showCurveHandle(row: Row, engine: EditorEngine): void {
+    const firstSeat = engine.state.get(row.seatIds[0]);
+    const lastSeat = engine.state.get(row.seatIds[row.seatIds.length - 1]);
+    if (!firstSeat || !lastSeat || !isSeat(firstSeat) || !isSeat(lastSeat)) return;
+
+    const firstPos = firstSeat.transform.position;
+    const lastPos = lastSeat.transform.position;
+    const midX = (firstPos.x + lastPos.x) / 2;
+    const midY = (firstPos.y + lastPos.y) / 2;
+
+    // Perpendicular direction (90 degrees from row orientation)
+    const angle = row.orientationAngle;
+    const perpX = -Math.sin(angle);
+    const perpY = Math.cos(angle);
+
+    // Offset by current curve amount (use curveRadius as visual offset)
+    const curveOffset = row.curveRadius || 0;
+    // Clamp handle position to match curve limits
+    const chord = distance(firstPos, lastPos);
+    const maxSagitta = (chord / 2) * 0.95;
+    const clampedOffset = Math.max(-maxSagitta, Math.min(maxSagitta, curveOffset));
+    const handlePos: Point = {
+      x: midX + perpX * clampedOffset,
+      y: midY + perpY * clampedOffset,
+    };
+
+    // If no curve yet, show handle slightly offset so it's visible
+    const displayPos: Point = clampedOffset === 0
+      ? { x: midX + perpX * 20, y: midY + perpY * 20 }
+      : handlePos;
+
+    this.curveHandlePosition = displayPos;
+
+    this.curveHandle = new Konva.Circle({
+      x: displayPos.x,
+      y: displayPos.y,
+      radius: 6,
+      fill: 'rgba(255, 152, 0, 0.5)',
+      stroke: 'rgba(255, 152, 0, 0.9)',
+      strokeWidth: 1.5,
+      listening: true,
+    });
+    this.curveHandle.on('mouseenter', () => {
+      document.body.style.cursor = 'grab';
+    });
+    this.curveHandle.on('mouseleave', () => {
+      document.body.style.cursor = 'default';
+    });
+
+    this.layer.add(this.curveHandle);
+  }
+
+  getCurveHandlePosition(): Point | null {
+    return this.curveHandlePosition;
+  }
+
+  getRowHandlePositions(): { left: Point; right: Point } | null {
+    return this.handlePositions;
+  }
+
+  getRotationHandlePosition(): Point | null {
+    return this.rotationHandlePosition;
+  }
+
+  private showRotationHandle(element: import('@/src/domain/types').MapElement, _engine: EditorEngine): void {
+    const centerX = element.transform.position.x;
+    const centerY = element.transform.position.y;
+
+    // Position above the element's top edge
+    const topY = element.bounds.y;
+    const handleOffset = 25;
+    const handleX = centerX;
+    const handleY = topY - handleOffset;
+
+    this.rotationHandlePosition = { x: handleX, y: handleY };
+
+    // Line from element center to handle
+    this.rotationLine = new Konva.Line({
+      points: [centerX, topY, handleX, handleY],
+      stroke: 'rgba(76, 175, 80, 0.5)',
+      strokeWidth: 1,
+      listening: false,
+    });
+
+    this.rotationHandle = new Konva.Circle({
+      x: handleX,
+      y: handleY,
+      radius: 6,
+      fill: 'rgba(76, 175, 80, 0.6)',
+      stroke: 'rgba(76, 175, 80, 1)',
+      strokeWidth: 1.5,
+      listening: true,
+    });
+    this.rotationHandle.on('mouseenter', () => {
+      document.body.style.cursor = 'crosshair';
+    });
+    this.rotationHandle.on('mouseleave', () => {
+      document.body.style.cursor = 'default';
+    });
+
+    this.layer.add(this.rotationLine);
+    this.layer.add(this.rotationHandle);
+  }
+
+  private clearRotationHandle(): void {
+    if (this.rotationHandle) {
+      this.rotationHandle.destroy();
+      this.rotationHandle = null;
+    }
+    if (this.rotationLine) {
+      this.rotationLine.destroy();
+      this.rotationLine = null;
+    }
+    this.rotationHandlePosition = null;
+  }
+
+  private showResizeHandles(area: Area): void {
+    const b = area.bounds;
+    const corners: { corner: string; x: number; y: number; cursor: string }[] = [
+      { corner: 'tl', x: b.x, y: b.y, cursor: 'nwse-resize' },
+      { corner: 'tr', x: b.x + b.width, y: b.y, cursor: 'nesw-resize' },
+      { corner: 'bl', x: b.x, y: b.y + b.height, cursor: 'nesw-resize' },
+      { corner: 'br', x: b.x + b.width, y: b.y + b.height, cursor: 'nwse-resize' },
+    ];
+
+    this.resizeHandlePositions = corners.map(c => ({
+      corner: c.corner,
+      position: { x: c.x, y: c.y },
+    }));
+
+    for (const c of corners) {
+      const handle = new Konva.Rect({
+        x: c.x - 3,
+        y: c.y - 3,
+        width: 6,
+        height: 6,
+        fill: 'white',
+        stroke: '#1A73E8',
+        strokeWidth: 1.5,
+        listening: true,
+      });
+      handle.setAttr('corner', c.corner);
+      const cursorStyle = c.cursor;
+      handle.on('mouseenter', () => {
+        document.body.style.cursor = cursorStyle;
+      });
+      handle.on('mouseleave', () => {
+        document.body.style.cursor = 'default';
+      });
+      this.layer.add(handle);
+      this.resizeHandles.push(handle);
+    }
+  }
+
+  private clearResizeHandles(): void {
+    for (const handle of this.resizeHandles) {
+      handle.destroy();
+    }
+    this.resizeHandles = [];
+    this.resizeHandlePositions = null;
+  }
+
+  getResizeHandlePositions(): { corner: string; position: Point }[] | null {
+    return this.resizeHandlePositions;
+  }
+
+  showBoxSelect(x: number, y: number, width: number, height: number): void {
+    if (!this.boxSelectRect) {
+      this.boxSelectRect = new Konva.Rect({
+        stroke: 'rgba(100, 100, 100, 0.35)',
+        strokeWidth: 0.5,
+        fill: 'rgba(100, 100, 100, 0.04)',
+        listening: false,
+      });
+      this.layer.add(this.boxSelectRect);
+    }
+    this.boxSelectRect.x(x);
+    this.boxSelectRect.y(y);
+    this.boxSelectRect.width(width);
+    this.boxSelectRect.height(height);
+    this.boxSelectRect.visible(true);
+    this.layer.batchDraw();
+  }
+
+  hideBoxSelect(): void {
+    if (this.boxSelectRect) {
+      this.boxSelectRect.visible(false);
+      this.layer.batchDraw();
+    }
+  }
+
+  clear(): void {
+    if (this.groupBoundingBox) {
+      this.groupBoundingBox.destroy();
+      this.groupBoundingBox = null;
+    }
+    for (const shadow of this.rowShadows.values()) {
+      shadow.destroy();
+    }
+    this.rowShadows.clear();
+    this.clearHandles();
+    this.previousSelectedIds = [];
+    this.hideBoxSelect();
+    this.layer.batchDraw();
+  }
+}
