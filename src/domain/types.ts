@@ -21,6 +21,7 @@ export interface Seat extends BaseElement {
   readonly type: 'seat';
   readonly label: string;
   readonly rowId: ElementId | null;
+  readonly tableId: ElementId | null;
   readonly status: SeatStatus;
   readonly category: SeatCategory;
   readonly radius: number;
@@ -61,6 +62,7 @@ export interface Table extends BaseElement {
   readonly tableRadius: number;
   readonly tableWidth: number;
   readonly tableHeight: number;
+  readonly category: SeatCategory;
 }
 
 export type MapElement = Seat | Row | Area | Table;

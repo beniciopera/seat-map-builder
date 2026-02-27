@@ -22,8 +22,8 @@ export interface LineSegment {
 }
 
 export interface Guideline {
-  readonly axis: 'horizontal' | 'vertical';
-  readonly position: number;
+  readonly throughPoint: Point;
+  readonly angle: number; // Direction in radians (0=right, PI/2=down)
   readonly sourceElementId: string;
   readonly alignmentType: 'center' | 'edge-start' | 'edge-end';
 }
