@@ -32,6 +32,9 @@ export const editorTheme = createTheme({
     MuiSelect: {
       defaultProps: { size: 'small' },
     },
+    MuiTooltip: {
+      defaultProps: { enterDelay: 0, enterNextDelay: 0 },
+    },
     MuiToolbar: {
       styleOverrides: {
         root: { minHeight: 48 },

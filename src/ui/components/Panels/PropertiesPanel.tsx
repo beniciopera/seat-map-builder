@@ -2,8 +2,9 @@
 import { Box, Typography, TextField, Select, MenuItem, FormControl, InputLabel } from '@mui/material';
 import { useEditorStore } from '@/src/store/useEditorStore';
 import { useEngine } from '@/src/ui/hooks/useEngine';
-import type { Seat, Row, Area, Table, SeatCategory } from '@/src/domain/types';
+import type { Seat, Row, Area, Table, SeatCategory, ElementId } from '@/src/domain/types';
 import { UpdatePropertiesCommand } from '@/src/engine/commands/UpdatePropertiesCommand';
+import { ChangeCategoryCommand } from '@/src/engine/commands/ChangeCategoryCommand';
 import { categoryColor } from '@/src/utils/color';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
@@ -39,22 +40,36 @@ export function PropertiesPanel() {
   const selectedIds = useEditorStore((s) => s.selectedIds);
   const [bulkVersion, setBulkVersion] = useState(0);
 
-  // For multi-selection: check if all elements are seats/rows
+  // For multi-selection: check if all elements are seats/rows/tables
   const multiSelectInfo = useMemo(() => {
     if (selectedElementData || selectionCount <= 1) return null;
 
     const elements = selectedIds.map((id) => engine.getElement(id)).filter(Boolean);
-    const allSeatsOrRows = elements.length > 0 && elements.every((el) => el!.type === 'seat' || el!.type === 'row');
+    const allSeatsRowsOrTables = elements.length > 0 && elements.every((el) => el!.type === 'seat' || el!.type === 'row' || el!.type === 'table');
 
-    if (!allSeatsOrRows) return null;
+    if (!allSeatsRowsOrTables) return null;
 
-    // Detect common category
+    // Collect table IDs so we can skip their child seats in category detection
+    const tableIds = new Set<string>();
+    const rowIds = new Set<string>();
+    for (const el of elements) {
+      if (el!.type === 'table') tableIds.add(el!.id);
+      if (el!.type === 'row') rowIds.add(el!.id);
+    }
+
+    // Detect common category (read from parent groups, not child seats)
     const categories = new Set<string>();
     for (const el of elements) {
       if (el!.type === 'seat') {
-        categories.add((el as unknown as Seat).category || 'planta1');
+        const seat = el as unknown as Seat;
+        // Skip seats whose parent table or row is also in the selection
+        if (seat.tableId && tableIds.has(seat.tableId)) continue;
+        if (seat.rowId && rowIds.has(seat.rowId)) continue;
+        categories.add(seat.category || 'planta1');
       } else if (el!.type === 'row') {
         categories.add((el as unknown as Row).category || 'planta1');
+      } else if (el!.type === 'table') {
+        categories.add((el as unknown as Table).category || 'planta1');
       }
     }
     const commonCategory = categories.size === 1 ? [...categories][0] : '';
@@ -68,36 +83,13 @@ export function PropertiesPanel() {
     // Multi-selection with bulk category editing
     if (selectionCount > 1 && multiSelectInfo) {
       const handleBulkCategoryChange = (newCategory: string) => {
-        const updatedElements: Seat[] = [];
-
-        for (const id of selectedIds) {
-          const el = engine.getElement(id);
-          if (!el) continue;
-
-          if (el.type === 'seat') {
-            const updated = { ...el, category: newCategory as SeatCategory } as Seat;
-            engine.state.set(id, updated);
-            updatedElements.push(updated);
-          } else if (el.type === 'row') {
-            const row = el as unknown as Row;
-            const updatedRow = { ...row, category: newCategory as SeatCategory };
-            engine.state.set(id, updatedRow);
-            // Propagate to child seats
-            for (const seatId of row.seatIds) {
-              const seat = engine.getElement(seatId);
-              if (seat && seat.type === 'seat') {
-                const updatedSeat = { ...seat, category: newCategory as SeatCategory } as Seat;
-                engine.state.set(seatId, updatedSeat);
-                updatedElements.push(updatedSeat);
-              }
-            }
-          }
-        }
-
-        if (updatedElements.length > 0) {
-          engine.events.emit('elements:updated', { elements: updatedElements });
-          setBulkVersion((v) => v + 1);
-        }
+        const cmd = new ChangeCategoryCommand(
+          engine,
+          selectedIds as ElementId[],
+          newCategory as SeatCategory,
+        );
+        engine.history.execute(cmd);
+        setBulkVersion((v) => v + 1);
       };
 
       return (
@@ -177,10 +169,10 @@ export function PropertiesPanel() {
         <RowProperties data={selectedElementData as unknown as Row} onChange={handleChange} engine={engine} />
       )}
       {selectedElementData.type === 'area' && (
-        <AreaProperties data={selectedElementData as unknown as Area} onChange={handleChange} />
+        <AreaProperties data={selectedElementData as unknown as Area} onChange={handleChange} engine={engine} />
       )}
       {selectedElementData.type === 'table' && (
-        <TableProperties data={selectedElementData as unknown as Table} onChange={handleChange} />
+        <TableProperties data={selectedElementData as unknown as Table} onChange={handleChange} engine={engine} />
       )}
     </Box>
   );
@@ -227,20 +219,12 @@ function RowProperties({
   };
 
   const handleCategoryChange = (newCategory: string) => {
-    onChange('category', newCategory);
-    // Propagate category to all child seats
-    const updatedSeats: Seat[] = [];
-    for (const seatId of data.seatIds) {
-      const seat = engine.getElement(seatId);
-      if (seat && seat.type === 'seat') {
-        const updated = { ...seat, category: newCategory as SeatCategory } as Seat;
-        engine.state.set(seatId, updated);
-        updatedSeats.push(updated);
-      }
-    }
-    if (updatedSeats.length > 0) {
-      engine.events.emit('elements:updated', { elements: updatedSeats });
-    }
+    const cmd = new ChangeCategoryCommand(
+      engine,
+      [data.id],
+      newCategory as SeatCategory,
+    );
+    engine.history.execute(cmd);
   };
 
   return (
@@ -271,13 +255,22 @@ function RowProperties({
   );
 }
 
-function AreaProperties({ data, onChange }: { data: Area; onChange: (field: string, value: unknown) => void }) {
+function AreaProperties({ data, onChange, engine }: { data: Area; onChange: (field: string, value: unknown) => void; engine: ReturnType<typeof useEngine> }) {
   const [localLabel, setLocalLabel] = useState(data.label);
+  const [localColor, setLocalColor] = useState(data.color || '#2196F3');
+  const colorBeforeDrag = useRef(data.color || '#2196F3');
+  const pendingColorCmd = useRef(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     setLocalLabel(data.label);
   }, [data.label]);
+
+  useEffect(() => {
+    setLocalColor(data.color || '#2196F3');
+    colorBeforeDrag.current = data.color || '#2196F3';
+    pendingColorCmd.current = false;
+  }, [data.color]);
 
   const handleBlur = () => {
     const trimmed = localLabel.trim();
@@ -285,6 +278,44 @@ function AreaProperties({ data, onChange }: { data: Area; onChange: (field: stri
       onChange('label', trimmed);
     } else {
       setLocalLabel(data.label);
+    }
+  };
+
+  const handleColorInput = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newColor = e.target.value;
+    setLocalColor(newColor);
+
+    if (!pendingColorCmd.current) {
+      // First change: revert state so execute() applies cleanly, then push command
+      const el = engine.state.get(data.id);
+      if (el) {
+        const reverted = { ...el, color: colorBeforeDrag.current } as Area;
+        engine.state.set(data.id, reverted);
+      }
+      const cmd = new UpdatePropertiesCommand(
+        engine,
+        data.id,
+        { color: colorBeforeDrag.current } as Partial<Area>,
+        { color: newColor } as Partial<Area>,
+      );
+      engine.history.execute(cmd);
+      pendingColorCmd.current = true;
+    } else {
+      // Subsequent changes: replace the command on the stack and apply directly
+      const cmd = new UpdatePropertiesCommand(
+        engine,
+        data.id,
+        { color: colorBeforeDrag.current } as Partial<Area>,
+        { color: newColor } as Partial<Area>,
+      );
+      engine.history.replaceLast(cmd);
+      const el = engine.state.get(data.id);
+      if (el) {
+        const merged = { ...el, color: newColor } as Area;
+        engine.state.set(data.id, merged);
+        engine.events.emit('elements:updated', { elements: [merged] });
+        engine.events.emit('render:request', {});
+      }
     }
   };
 
@@ -307,22 +338,49 @@ function AreaProperties({ data, onChange }: { data: Area; onChange: (field: stri
         label="Color"
         type="color"
         fullWidth
-        value={data.color || '#2196F3'}
-        onChange={(e) => onChange('color', e.target.value)}
+        value={localColor}
+        onChange={handleColorInput}
         sx={{ mb: 2 }}
       />
     </>
   );
 }
 
-function TableProperties({ data, onChange }: { data: Table; onChange: (field: string, value: unknown) => void }) {
+function TableProperties({
+  data,
+  onChange,
+  engine,
+}: {
+  data: Table;
+  onChange: (field: string, value: unknown) => void;
+  engine: ReturnType<typeof useEngine>;
+}) {
+  const handleLabelChange = (newLabel: string) => {
+    onChange('label', newLabel);
+  };
+
+  const handleCategoryChange = (newCategory: string) => {
+    const cmd = new ChangeCategoryCommand(
+      engine,
+      [data.id],
+      newCategory as SeatCategory,
+    );
+    engine.history.execute(cmd);
+  };
+
   return (
     <>
+      <TextField
+        label="Label"
+        fullWidth
+        value={data.label || ''}
+        onChange={(e) => handleLabelChange(e.target.value)}
+        sx={{ mb: 2 }}
+      />
       <FormControl fullWidth sx={{ mb: 2 }}>
-        <InputLabel>Shape</InputLabel>
-        <Select value={data.shape || 'round'} label="Shape" onChange={(e) => onChange('shape', e.target.value)}>
-          <MenuItem value="round">Round</MenuItem>
-          <MenuItem value="rectangular">Rectangular</MenuItem>
+        <InputLabel>Category</InputLabel>
+        <Select value={data.category || 'planta1'} label="Category" onChange={(e) => handleCategoryChange(e.target.value)}>
+          {renderCategoryMenuItems()}
         </Select>
       </FormControl>
       <Typography variant="body2" color="text.secondary">
