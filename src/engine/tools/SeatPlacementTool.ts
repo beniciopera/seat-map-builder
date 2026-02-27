@@ -19,9 +19,9 @@ export class SeatPlacementTool extends BaseTool {
       case 'idle':
       case 'preview': {
         const snapResult = this.engine.snap.snapPoint(event.worldPoint);
-        this.anchorPoint = snapResult.snappedPoint;
-        if (snapResult.snappedX || snapResult.snappedY) {
-          this.engine.guidelines.computeFromSnapTargets(snapResult.matchedTargets);
+        this.anchorPoint = event.worldPoint;
+        if (snapResult.snappedX || snapResult.snappedY || snapResult.angleTargets.length > 0) {
+          this.engine.guidelines.computeFromSnapTargets(snapResult.matchedTargets, snapResult.angleTargets);
         }
         this.transition('anchor');
         break;
@@ -86,14 +86,14 @@ export class SeatPlacementTool extends BaseTool {
   private updatePreview(worldPoint: Point): void {
     if (!this.engine) return;
     const snapResult = this.engine.snap.snapPoint(worldPoint);
-    if (snapResult.snappedX || snapResult.snappedY) {
-      this.engine.guidelines.computeFromSnapTargets(snapResult.matchedTargets);
+    if (snapResult.snappedX || snapResult.snappedY || snapResult.angleTargets.length > 0) {
+      this.engine.guidelines.computeFromSnapTargets(snapResult.matchedTargets, snapResult.angleTargets);
     } else {
       this.engine.guidelines.clear();
     }
     this.engine.events.emit('preview:seats', {
-      seats: [snapResult.snappedPoint],
-      anchorPoint: snapResult.snappedPoint,
+      seats: [worldPoint],
+      anchorPoint: worldPoint,
     });
   }
 
@@ -101,17 +101,16 @@ export class SeatPlacementTool extends BaseTool {
     if (!this.engine || !this.anchorPoint) return;
 
     const snapResult = this.engine.snap.snapPoint(endPoint);
-    const snappedEnd = snapResult.snappedPoint;
 
-    if (snapResult.snappedX || snapResult.snappedY) {
-      this.engine.guidelines.computeFromSnapTargets(snapResult.matchedTargets);
+    if (snapResult.snappedX || snapResult.snappedY || snapResult.angleTargets.length > 0) {
+      this.engine.guidelines.computeFromSnapTargets(snapResult.matchedTargets, snapResult.angleTargets);
     } else {
       this.engine.guidelines.clear();
     }
 
     const seats = this.engine.seatGeneration.generateAlongLine(
       this.anchorPoint,
-      snappedEnd,
+      endPoint,
       this.spacing,
     );
     this.previewPositions = seats;

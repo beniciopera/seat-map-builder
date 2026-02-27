@@ -33,9 +33,9 @@ export class GridTool extends BaseTool {
       case 'idle':
       case 'preview': {
         const snapResult = this.engine.snap.snapPoint(event.worldPoint);
-        this.originPoint = snapResult.snappedPoint;
-        if (snapResult.snappedX || snapResult.snappedY) {
-          this.engine.guidelines.computeFromSnapTargets(snapResult.matchedTargets);
+        this.originPoint = event.worldPoint;
+        if (snapResult.snappedX || snapResult.snappedY || snapResult.angleTargets.length > 0) {
+          this.engine.guidelines.computeFromSnapTargets(snapResult.matchedTargets, snapResult.angleTargets);
         }
         this.transition('origin-set');
         break;
@@ -110,14 +110,14 @@ export class GridTool extends BaseTool {
   private updateIdlePreview(worldPoint: Point): void {
     if (!this.engine) return;
     const snapResult = this.engine.snap.snapPoint(worldPoint);
-    if (snapResult.snappedX || snapResult.snappedY) {
-      this.engine.guidelines.computeFromSnapTargets(snapResult.matchedTargets);
+    if (snapResult.snappedX || snapResult.snappedY || snapResult.angleTargets.length > 0) {
+      this.engine.guidelines.computeFromSnapTargets(snapResult.matchedTargets, snapResult.angleTargets);
     } else {
       this.engine.guidelines.clear();
     }
     this.engine.events.emit('preview:seats', {
-      seats: [snapResult.snappedPoint],
-      anchorPoint: snapResult.snappedPoint,
+      seats: [worldPoint],
+      anchorPoint: worldPoint,
     });
   }
 
@@ -125,10 +125,9 @@ export class GridTool extends BaseTool {
     if (!this.engine || !this.originPoint) return;
 
     const snapResult = this.engine.snap.snapPoint(endPoint);
-    const snappedEnd = snapResult.snappedPoint;
 
-    if (snapResult.snappedX || snapResult.snappedY) {
-      this.engine.guidelines.computeFromSnapTargets(snapResult.matchedTargets);
+    if (snapResult.snappedX || snapResult.snappedY || snapResult.angleTargets.length > 0) {
+      this.engine.guidelines.computeFromSnapTargets(snapResult.matchedTargets, snapResult.angleTargets);
     } else {
       this.engine.guidelines.clear();
     }
@@ -138,18 +137,18 @@ export class GridTool extends BaseTool {
     // y = originY + i * spacing * sin(angle)
     const seats = this.engine.seatGeneration.generateAlongLine(
       this.originPoint,
-      snappedEnd,
+      endPoint,
       this.spacing,
     );
 
     this.firstRowPositions = seats;
     this.seatCount = seats.length;
-    this.rowAngle = angleBetween(this.originPoint, snappedEnd);
+    this.rowAngle = angleBetween(this.originPoint, endPoint);
 
     this.engine.events.emit('preview:grid', {
       seats,
       anchorPoint: this.originPoint,
-      cursorPoint: snappedEnd,
+      cursorPoint: endPoint,
       angle: this.rowAngle,
       rows: 1,
       cols: this.seatCount,
@@ -159,22 +158,21 @@ export class GridTool extends BaseTool {
   private updateGridPreview(mousePoint: Point): void {
     if (!this.engine || !this.originPoint || this.firstRowPositions.length === 0) return;
 
-    // Snap the mouse point and show guidelines for alignment
+    // Show guidelines for alignment (visual only)
     const snapResult = this.engine.snap.snapPoint(mousePoint);
-    const snappedMouse = snapResult.snappedPoint;
 
-    if (snapResult.snappedX || snapResult.snappedY) {
-      this.engine.guidelines.computeFromSnapTargets(snapResult.matchedTargets);
+    if (snapResult.snappedX || snapResult.snappedY || snapResult.angleTargets.length > 0) {
+      this.engine.guidelines.computeFromSnapTargets(snapResult.matchedTargets, snapResult.angleTargets);
     } else {
       this.engine.guidelines.clear();
     }
 
-    const grid = this.generateGrid(snappedMouse);
+    const grid = this.generateGrid(mousePoint);
 
     this.engine.events.emit('preview:grid', {
       seats: grid.allSeats,
       anchorPoint: this.originPoint,
-      cursorPoint: snappedMouse,
+      cursorPoint: mousePoint,
       angle: this.rowAngle,
       rows: grid.rowCount,
       cols: grid.colCount,
@@ -184,8 +182,7 @@ export class GridTool extends BaseTool {
   private commitGrid(mousePoint: Point): void {
     if (!this.engine || !this.originPoint || this.firstRowPositions.length === 0) return;
 
-    const snapResult = this.engine.snap.snapPoint(mousePoint);
-    const grid = this.generateGrid(snapResult.snappedPoint);
+    const grid = this.generateGrid(mousePoint);
 
     this.engine.placement.placeGrid(grid.rowPositions);
 

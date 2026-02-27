@@ -18,9 +18,7 @@ export class AreaTool extends BaseTool {
   onPointerDown(event: EditorInputEvent): void {
     if (!this.engine || event.button !== 0) return;
 
-    // Snap the start point
-    const snapResult = this.engine.snap.snapPoint(event.worldPoint);
-    this.startPoint = snapResult.snappedPoint;
+    this.startPoint = event.worldPoint;
     this.transition('drawing');
   }
 
@@ -28,9 +26,7 @@ export class AreaTool extends BaseTool {
     if (!this.engine) return;
 
     if (this._currentState === 'drawing' && this.startPoint) {
-      // Snap the current pointer position
-      const snapResult = this.engine.snap.snapPoint(event.worldPoint);
-      const endPoint = snapResult.snappedPoint;
+      const endPoint = event.worldPoint;
 
       // Compute the rectangle
       const x = Math.min(this.startPoint.x, endPoint.x);
@@ -38,9 +34,10 @@ export class AreaTool extends BaseTool {
       const width = Math.abs(endPoint.x - this.startPoint.x);
       const height = Math.abs(endPoint.y - this.startPoint.y);
 
-      // Emit guidelines if snapped
-      if (snapResult.snappedX || snapResult.snappedY) {
-        this.engine.guidelines.computeFromSnapTargets(snapResult.matchedTargets);
+      // Show visual guidelines
+      const snapResult = this.engine.snap.snapPoint(event.worldPoint);
+      if (snapResult.snappedX || snapResult.snappedY || snapResult.angleTargets.length > 0) {
+        this.engine.guidelines.computeFromSnapTargets(snapResult.matchedTargets, snapResult.angleTargets);
       } else {
         this.engine.guidelines.clear();
       }
@@ -59,9 +56,7 @@ export class AreaTool extends BaseTool {
     if (!this.engine || !this.startPoint) return;
 
     if (this._currentState === 'drawing') {
-      // Snap the end point
-      const snapResult = this.engine.snap.snapPoint(event.worldPoint);
-      const endPoint = snapResult.snappedPoint;
+      const endPoint = event.worldPoint;
 
       const x = Math.min(this.startPoint.x, endPoint.x);
       const y = Math.min(this.startPoint.y, endPoint.y);
