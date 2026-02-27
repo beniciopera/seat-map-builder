@@ -1,8 +1,8 @@
 import { BaseTool } from './Tool';
 import type { EditorInputEvent } from '../input/InputEvent';
 import type { Point, Rect } from '@/src/domain/geometry';
-import type { ElementId, MapElement, Row, Seat } from '@/src/domain/types';
-import { isSeat, isRow, isArea } from '@/src/domain/types';
+import type { ElementId, MapElement, Row, Seat, Table, Area } from '@/src/domain/types';
+import { isSeat, isRow, isArea, isTable } from '@/src/domain/types';
 import { MoveElementsCommand } from '../commands/MoveElementsCommand';
 import { DeleteElementsCommand } from '../commands/DeleteElementsCommand';
 import { ExtendRowCommand } from '../commands/ExtendRowCommand';
@@ -13,6 +13,7 @@ import { ResizeElementCommand } from '../commands/ResizeElementCommand';
 import { distance, angleBetween, arcFromSagitta } from '@/src/utils/math';
 import { generateElementId } from '@/src/domain/ids';
 import { DEFAULT_SEAT_RADIUS } from '@/src/domain/constraints';
+import type { SnapTarget, AngleSnapTarget } from '../systems/SnapEngine';
 
 export class SelectionTool extends BaseTool {
   readonly id = 'selection';
@@ -118,8 +119,9 @@ export class SelectionTool extends BaseTool {
         this.engine.selection.select(hit.id);
       }
 
-      // Expand selection to include full rows
-      const expanded = this.expandSelectionWithRows(this.engine.selection.getSelectedIds());
+      // Expand selection to include full rows and tables
+      const expandedRows = this.expandSelectionWithRows(this.engine.selection.getSelectedIds());
+      const expanded = this.expandSelectionWithTables(expandedRows);
       this.engine.selection.selectMultiple(expanded);
 
       this.engine.events.emit('selection:changed', {
@@ -140,6 +142,8 @@ export class SelectionTool extends BaseTool {
 
       this.engine.snap.setExcluded(this.engine.selection.getSelectedIds());
       this.transition('dragging');
+      // Show guidelines immediately on click-hold
+      this.showGuidelinesAtPoint(event.worldPoint);
     } else if (this.engine.selection.hasSelection && this.isPointInSelectionBounds(event.worldPoint)) {
       // Click inside selection bounding box but not on an element — start dragging
       this.dragStartWorld = event.worldPoint;
@@ -151,6 +155,8 @@ export class SelectionTool extends BaseTool {
       }
       this.engine.snap.setExcluded(this.engine.selection.getSelectedIds());
       this.transition('dragging');
+      // Show guidelines immediately on click-hold
+      this.showGuidelinesAtPoint(event.worldPoint);
     } else {
       // Click on empty space — clear selection, start box-selecting
       if (!event.shiftKey) {
@@ -222,21 +228,30 @@ export class SelectionTool extends BaseTool {
           y: event.worldPoint.y - this.dragStartWorld.y,
         };
 
-        // Apply snap
+        // Show alignment guidelines (visual only, no position snapping)
+        // Probe from all selected elements for alignment with other elements
         const selectedIds = this.engine.selection.getSelectedIds();
         if (selectedIds.length > 0) {
-          const firstId = selectedIds[0];
-          const origPos = this.dragOriginalPositions.get(firstId);
-          if (origPos) {
+          const allMatchedTargets: SnapTarget[] = [];
+          const allAngleTargets: AngleSnapTarget[] = [];
+
+          for (const id of selectedIds) {
+            const origPos = this.dragOriginalPositions.get(id);
+            if (!origPos) continue;
             const targetPoint = { x: origPos.x + delta.x, y: origPos.y + delta.y };
             const snapResult = this.engine.snap.snapPoint(targetPoint);
-            if (snapResult.snappedX || snapResult.snappedY) {
-              delta.x = snapResult.snappedPoint.x - origPos.x;
-              delta.y = snapResult.snappedPoint.y - origPos.y;
-              this.engine.guidelines.computeFromSnapTargets(snapResult.matchedTargets);
-            } else {
-              this.engine.guidelines.clear();
-            }
+            allMatchedTargets.push(...snapResult.matchedTargets);
+            allAngleTargets.push(...snapResult.angleTargets);
+          }
+
+          // Add self-guidelines (row orientation)
+          const selfGuidelines = this.computeSelfGuidelines();
+          allAngleTargets.push(...selfGuidelines);
+
+          if (allMatchedTargets.length > 0 || allAngleTargets.length > 0) {
+            this.engine.guidelines.computeFromSnapTargets(allMatchedTargets, allAngleTargets);
+          } else {
+            this.engine.guidelines.clear();
           }
         }
 
@@ -270,7 +285,8 @@ export class SelectionTool extends BaseTool {
           const el = this.engine!.state.get(id);
           return el && el.visible && !el.locked && this.rectIntersectsElement(rect, el);
         });
-        const expanded = this.expandSelectionWithRows(visibleIds);
+        const expandedRows = this.expandSelectionWithRows(visibleIds);
+        const expanded = this.expandSelectionWithTables(expandedRows);
         this.engine.selection.selectMultiple(expanded);
         this.engine.events.emit('selection:changed', {
           selectedIds: this.engine.selection.getSelectedIds(),
@@ -518,15 +534,6 @@ export class SelectionTool extends BaseTool {
             this.rotationCenter,
           );
           this.engine.history.execute(cmd);
-
-          // For rows, also update orientationAngle
-          for (const id of this.rotatingIds) {
-            const el = this.engine.state.get(id);
-            if (el && isRow(el)) {
-              const updatedRow = { ...el, orientationAngle: el.orientationAngle + deltaAngle } as Row;
-              this.engine.state.set(id, updatedRow);
-            }
-          }
         }
 
         // Refresh selection visuals
@@ -577,7 +584,8 @@ export class SelectionTool extends BaseTool {
             const el = this.engine!.state.get(id);
             return el && el.visible && !el.locked && this.rectIntersectsElement(rect, el);
           });
-          const expanded = this.expandSelectionWithRows(visibleIds);
+          const expandedRows = this.expandSelectionWithRows(visibleIds);
+          const expanded = this.expandSelectionWithTables(expandedRows);
           if (event.shiftKey) {
             for (const id of expanded) {
               this.engine.selection.addToSelection(id);
@@ -741,6 +749,7 @@ export class SelectionTool extends BaseTool {
                   type: 'seat',
                   label: '',
                   rowId: row.id,
+                  tableId: null,
                   status: 'available',
                   category: anchorSeat.category,
                   radius: anchorSeat.radius || DEFAULT_SEAT_RADIUS,
@@ -775,6 +784,7 @@ export class SelectionTool extends BaseTool {
                   type: 'seat',
                   label: '',
                   rowId: row.id,
+                  tableId: null,
                   status: 'available',
                   category: anchorSeat.category,
                   radius: anchorSeat.radius || DEFAULT_SEAT_RADIUS,
@@ -1097,6 +1107,172 @@ export class SelectionTool extends BaseTool {
     return null;
   }
 
+  private showGuidelinesAtPoint(point: Point): void {
+    if (!this.engine) return;
+    const snapResult = this.engine.snap.snapPoint(point);
+    const selfGuidelines = this.computeSelfGuidelines();
+    const allAngle = [...snapResult.angleTargets, ...selfGuidelines];
+    if (snapResult.snappedX || snapResult.snappedY || allAngle.length > 0) {
+      this.engine.guidelines.computeFromSnapTargets(snapResult.matchedTargets, allAngle);
+    }
+  }
+
+  /**
+   * Generate guidelines from the dragged elements themselves:
+   * - For rows: along orientationAngle and perpendicular through the row's position
+   * - For rows in areas: also show guidelines for the outermost (extreme) rows of the area
+   * - For tables: horizontal and vertical through the table's center
+   */
+  private computeSelfGuidelines(): AngleSnapTarget[] {
+    if (!this.engine) return [];
+    const targets: AngleSnapTarget[] = [];
+    const selectedIds = this.engine.selection.getSelectedIds();
+    const seen = new Set<string>();
+    const processedAreas = new Set<string>();
+
+    for (const id of selectedIds) {
+      const el = this.engine.state.get(id);
+      if (!el) continue;
+
+      // Resolve the row (directly or via seat)
+      let row: Row | null = null;
+      if (isRow(el)) {
+        row = el;
+      } else if (isSeat(el) && el.rowId) {
+        const r = this.engine.state.get(el.rowId);
+        if (r && isRow(r)) row = r;
+      }
+
+      if (row) {
+        const key = `row-${row.id}`;
+        if (!seen.has(key)) {
+          seen.add(key);
+          const pos = row.transform.position;
+          // Along row direction through row center
+          targets.push({
+            throughPoint: pos,
+            angle: row.orientationAngle,
+            sourceElementId: row.id,
+            alignmentType: 'center',
+          });
+          // Perpendicular guidelines at first and last seat (extremes)
+          if (row.seatIds.length > 0) {
+            const firstSeat = this.engine.state.get(row.seatIds[0]);
+            const lastSeat = this.engine.state.get(row.seatIds[row.seatIds.length - 1]);
+            if (firstSeat) {
+              targets.push({
+                throughPoint: firstSeat.transform.position,
+                angle: row.orientationAngle + Math.PI / 2,
+                sourceElementId: row.seatIds[0],
+                alignmentType: 'edge-start',
+              });
+            }
+            if (lastSeat && row.seatIds.length > 1) {
+              targets.push({
+                throughPoint: lastSeat.transform.position,
+                angle: row.orientationAngle + Math.PI / 2,
+                sourceElementId: row.seatIds[row.seatIds.length - 1],
+                alignmentType: 'edge-end',
+              });
+            }
+          }
+        }
+
+        // Add guidelines for extreme rows in the area
+        if (row.areaId && !processedAreas.has(row.areaId as string)) {
+          processedAreas.add(row.areaId as string);
+          const area = this.engine.state.get(row.areaId);
+          if (area && isArea(area) && area.rowIds.length > 1) {
+            this.addExtremeRowGuidelines(area, row.orientationAngle, targets, seen);
+          }
+        }
+      }
+
+      // For tables: horizontal and vertical through center
+      if (isTable(el)) {
+        const pos = el.transform.position;
+        const key = `table-${id}`;
+        if (!seen.has(key)) {
+          seen.add(key);
+          targets.push({
+            throughPoint: pos,
+            angle: 0,
+            sourceElementId: id,
+            alignmentType: 'center',
+          });
+          targets.push({
+            throughPoint: pos,
+            angle: Math.PI / 2,
+            sourceElementId: id,
+            alignmentType: 'center',
+          });
+        }
+      }
+    }
+
+    return targets;
+  }
+
+  /**
+   * Find the outermost (extreme) rows of an area and add their guidelines.
+   * Projects each row's position onto the perpendicular axis of the row direction
+   * to find the first and last rows in the stacking direction.
+   */
+  private addExtremeRowGuidelines(
+    area: Area,
+    orientationAngle: number,
+    targets: AngleSnapTarget[],
+    seen: Set<string>,
+  ): void {
+    if (!this.engine) return;
+
+    const perpX = -Math.sin(orientationAngle);
+    const perpY = Math.cos(orientationAngle);
+
+    let minProj = Infinity;
+    let maxProj = -Infinity;
+    let minRow: Row | null = null;
+    let maxRow: Row | null = null;
+
+    for (const rowId of area.rowIds) {
+      const r = this.engine.state.get(rowId);
+      if (!r || !isRow(r)) continue;
+
+      const pos = r.transform.position;
+      const proj = pos.x * perpX + pos.y * perpY;
+
+      if (proj < minProj) {
+        minProj = proj;
+        minRow = r;
+      }
+      if (proj > maxProj) {
+        maxProj = proj;
+        maxRow = r;
+      }
+    }
+
+    const extremeRows = [minRow, maxRow].filter((r): r is Row => r !== null);
+    for (const r of extremeRows) {
+      const key = `row-${r.orientationAngle.toFixed(4)}-${r.id}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+
+      const pos = r.transform.position;
+      targets.push({
+        throughPoint: pos,
+        angle: r.orientationAngle,
+        sourceElementId: r.id,
+        alignmentType: 'edge-start',
+      });
+      targets.push({
+        throughPoint: pos,
+        angle: r.orientationAngle + Math.PI / 2,
+        sourceElementId: r.id,
+        alignmentType: 'edge-end',
+      });
+    }
+  }
+
   private isPointInSelectionBounds(point: Point): boolean {
     const selectedIds = this.engine!.selection.getSelectedIds();
     if (selectedIds.length === 0) return false;
@@ -1133,6 +1309,30 @@ export class SelectionTool extends BaseTool {
         }
       } else if (isRow(el)) {
         // Row selected directly → add all its seats
+        for (const seatId of el.seatIds) expanded.add(seatId);
+      }
+    }
+
+    return Array.from(expanded);
+  }
+
+  private expandSelectionWithTables(ids: ElementId[]): ElementId[] {
+    if (!this.engine) return ids;
+    const expanded = new Set<ElementId>(ids);
+
+    for (const id of ids) {
+      const el = this.engine.state.get(id);
+      if (!el) continue;
+
+      if (isSeat(el) && el.tableId) {
+        // Seat belongs to a table → add the table + all sibling seats
+        const table = this.engine.state.get(el.tableId);
+        if (table && isTable(table)) {
+          expanded.add(table.id);
+          for (const seatId of table.seatIds) expanded.add(seatId);
+        }
+      } else if (isTable(el)) {
+        // Table selected directly → add all its seats
         for (const seatId of el.seatIds) expanded.add(seatId);
       }
     }
@@ -1374,6 +1574,8 @@ export class SelectionTool extends BaseTool {
     }
     if (isSeat(primaryEl) && primaryEl.rowId && selectedRowIds.size === 1) {
       primaryEl = this.engine.state.get(selectedRowIds.values().next().value as ElementId) ?? primaryEl;
+    } else if (isSeat(primaryEl) && primaryEl.tableId) {
+      primaryEl = this.engine.state.get(primaryEl.tableId) ?? primaryEl;
     }
 
     const centerX = primaryEl.transform.position.x;
@@ -1403,6 +1605,8 @@ export class SelectionTool extends BaseTool {
     if (!primaryEl) return;
     if (isSeat(primaryEl) && primaryEl.rowId && selectedRowIds.size === 1) {
       primaryEl = this.engine.state.get(selectedRowIds.values().next().value as ElementId) ?? primaryEl;
+    } else if (isSeat(primaryEl) && primaryEl.tableId) {
+      primaryEl = this.engine.state.get(primaryEl.tableId) ?? primaryEl;
     }
 
     this.rotationCenter = primaryEl.transform.position;
@@ -1415,6 +1619,21 @@ export class SelectionTool extends BaseTool {
       if (row && isRow(row)) {
         allIds.add(row.id);
         for (const seatId of row.seatIds) allIds.add(seatId);
+      }
+    }
+    // If tables are selected, include their seats (and vice versa)
+    for (const id of selectedIds) {
+      const el = this.engine.state.get(id);
+      if (!el) continue;
+      if (isTable(el)) {
+        allIds.add(el.id);
+        for (const seatId of el.seatIds) allIds.add(seatId);
+      } else if (isSeat(el) && el.tableId) {
+        const table = this.engine.state.get(el.tableId);
+        if (table && isTable(table)) {
+          allIds.add(table.id);
+          for (const seatId of table.seatIds) allIds.add(seatId);
+        }
       }
     }
     this.rotatingIds = Array.from(allIds);

@@ -144,7 +144,7 @@ export class KonvaRenderer {
     this.unsubscribers.push(
       this.engine.events.on('guidelines:updated', ({ guidelines }) => {
         const bounds = this.camera.getVisibleBounds();
-        this.guidelinesLayer.updateGuidelines(guidelines, bounds);
+        this.guidelinesLayer.updateGuidelines(guidelines, bounds, this.engine.viewport.zoom);
       }),
     );
 
@@ -161,8 +161,8 @@ export class KonvaRenderer {
     );
 
     this.unsubscribers.push(
-      this.engine.events.on('preview:table', ({ center, tableRadius, seatCount, label }) => {
-        this.previewLayer.showTablePreview(center, tableRadius, seatCount, label);
+      this.engine.events.on('preview:table', ({ center, tableRadius, seatCount, seatGap, label }) => {
+        this.previewLayer.showTablePreview(center, tableRadius, seatCount, seatGap, label);
       }),
     );
 

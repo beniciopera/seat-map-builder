@@ -78,7 +78,7 @@ export class PreviewLayer {
     this.layer.batchDraw();
   }
 
-  showTablePreview(center: Point, tableRadius: number, seatCount: number, label: string): void {
+  showTablePreview(center: Point, tableRadius: number, seatCount: number, seatGap: number, label: string): void {
     this.clearGhosts();
 
     // Ghost table body
@@ -96,7 +96,7 @@ export class PreviewLayer {
 
     // Ghost seats
     const seatRadius = DEFAULT_SEAT_RADIUS;
-    const seatDistFromCenter = tableRadius + seatRadius + 5;
+    const seatDistFromCenter = tableRadius + seatRadius + seatGap;
     for (let i = 0; i < seatCount; i++) {
       const angle = (2 * Math.PI * i) / seatCount;
       const seatX = center.x + Math.cos(angle) * seatDistFromCenter;

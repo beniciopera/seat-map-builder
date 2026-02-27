@@ -4,7 +4,7 @@ import type { Point } from '@/src/domain/geometry';
 import type { Table, Seat } from '@/src/domain/types';
 import { generateElementId } from '@/src/domain/ids';
 import { DEFAULT_TRANSFORM } from '@/src/domain/geometry';
-import { DEFAULT_SEAT_RADIUS } from '@/src/domain/constraints';
+import { DEFAULT_SEAT_RADIUS, DEFAULT_TABLE_RADIUS, DEFAULT_TABLE_SEAT_GAP } from '@/src/domain/constraints';
 import { CreateTableCommand } from '../commands/CreateTableCommand';
 
 export class TableTool extends BaseTool {
@@ -15,15 +15,12 @@ export class TableTool extends BaseTool {
 
   private tableCounter = 0;
   private seatCount = 8;
-  private tableRadius = 60;
+  private tableRadius = DEFAULT_TABLE_RADIUS;
 
   onPointerDown(event: EditorInputEvent): void {
     if (!this.engine || event.button !== 0) return;
 
-    const snapResult = this.engine.snap.snapPoint(event.worldPoint);
-    const pos = snapResult.snappedPoint;
-
-    this.placeTable(pos);
+    this.transition('placing');
   }
 
   onPointerMove(event: EditorInputEvent): void {
@@ -33,24 +30,29 @@ export class TableTool extends BaseTool {
       this.transition('preview');
     }
 
-    // Show ghost preview
+    // Show ghost preview with visual guidelines
     const snapResult = this.engine.snap.snapPoint(event.worldPoint);
-    if (snapResult.snappedX || snapResult.snappedY) {
-      this.engine.guidelines.computeFromSnapTargets(snapResult.matchedTargets);
+    if (snapResult.snappedX || snapResult.snappedY || snapResult.angleTargets.length > 0) {
+      this.engine.guidelines.computeFromSnapTargets(snapResult.matchedTargets, snapResult.angleTargets);
     } else {
       this.engine.guidelines.clear();
     }
     this.engine.events.emit('preview:table', {
-      center: snapResult.snappedPoint,
+      center: event.worldPoint,
       tableRadius: this.tableRadius,
       seatCount: this.seatCount,
+      seatGap: DEFAULT_TABLE_SEAT_GAP,
       label: `T${this.tableCounter + 1}`,
     });
     this.engine.events.emit('render:request', {});
   }
 
-  onPointerUp(_event: EditorInputEvent): void {
-    // Handled in pointerDown for single-click placement
+  onPointerUp(event: EditorInputEvent): void {
+    if (!this.engine) return;
+
+    if (this._currentState === 'placing') {
+      this.placeTable(event.worldPoint);
+    }
   }
 
   onKeyDown(event: KeyboardEvent): void {
@@ -79,9 +81,13 @@ export class TableTool extends BaseTool {
   private placeTable(pos: Point): void {
     if (!this.engine) return;
 
+    this.engine.events.emit('preview:clear', {} as Record<string, never>);
+
     const tableLabel = `T${++this.tableCounter}`;
     const seatRadius = DEFAULT_SEAT_RADIUS;
-    const seatDistFromCenter = this.tableRadius + seatRadius + 5;
+    const seatDistFromCenter = this.tableRadius + seatRadius + DEFAULT_TABLE_SEAT_GAP;
+
+    const tableId = generateElementId();
 
     // Generate seats around the table
     const seats: Seat[] = [];
@@ -99,6 +105,7 @@ export class TableTool extends BaseTool {
         type: 'seat',
         label: `${tableLabel}-${i + 1}`,
         rowId: null,
+        tableId,
         status: 'available',
         category: 'planta1',
         radius: seatRadius,
@@ -115,7 +122,7 @@ export class TableTool extends BaseTool {
     }
 
     const table: Table = {
-      id: generateElementId(),
+      id: tableId,
       type: 'table',
       label: tableLabel,
       shape: 'round',
@@ -124,6 +131,7 @@ export class TableTool extends BaseTool {
       tableRadius: this.tableRadius,
       tableWidth: this.tableRadius * 2,
       tableHeight: this.tableRadius * 2,
+      category: 'planta1',
       locked: false,
       visible: true,
       transform: { ...DEFAULT_TRANSFORM, position: pos },

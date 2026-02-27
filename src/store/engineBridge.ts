@@ -56,7 +56,32 @@ export function bridgeEngineToStore(engine: EditorEngine): () => void {
             useEditorStore.getState().setSelectedElementData(null);
           }
         } else {
-          useEditorStore.getState().setSelectedElementData(null);
+          // Check if selection is a table + its child seats (treat as table selection)
+          let tableElement: ReturnType<typeof engine.getElement> | null = null;
+          for (const id of selectedIds) {
+            const el = engine.getElement(id);
+            if (el && el.type === 'table') {
+              if (tableElement) { tableElement = null; break; } // multiple tables → not a table group
+              tableElement = el;
+            }
+          }
+          if (tableElement && tableElement.type === 'table' && 'seatIds' in tableElement) {
+            const seatIds = (tableElement as unknown as { seatIds: readonly string[] }).seatIds;
+            const expectedSize = seatIds.length + 1; // table + seats
+            if (selectedIds.length === expectedSize) {
+              const label = 'label' in tableElement ? (tableElement as { label: string }).label : '';
+              useEditorStore.getState().setSelectedElementData({
+                ...tableElement,
+                type: tableElement.type,
+                id: tableElement.id,
+                label,
+              });
+            } else {
+              useEditorStore.getState().setSelectedElementData(null);
+            }
+          } else {
+            useEditorStore.getState().setSelectedElementData(null);
+          }
         }
       }
     }),
