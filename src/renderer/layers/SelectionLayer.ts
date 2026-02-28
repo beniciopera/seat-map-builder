@@ -237,31 +237,18 @@ export class SelectionLayer {
       }
     }
 
-    // 6b. Show resize handles if exactly one area is selected
+    // 6b. Show resize handles if exactly one area is selected and not rotated
     if (selectedIds.length === 1) {
       const singleEl = engine.state.get(selectedIds[0]);
       if (singleEl && isArea(singleEl)) {
-        this.showResizeHandles(singleEl as Area);
+        if (Math.abs(singleEl.transform.rotation) < 0.01) {
+          this.showResizeHandles(singleEl as Area);
+        }
       }
     }
 
-    // 7. Multi-selection bounding box
-    if (selectedIds.length > 1) {
-      let minX = Infinity;
-      let minY = Infinity;
-      let maxX = -Infinity;
-      let maxY = -Infinity;
-
-      for (const id of selectedIds) {
-        const el = engine.state.get(id);
-        if (!el) continue;
-        minX = Math.min(minX, el.bounds.x);
-        minY = Math.min(minY, el.bounds.y);
-        maxX = Math.max(maxX, el.bounds.x + el.bounds.width);
-        maxY = Math.max(maxY, el.bounds.y + el.bounds.height);
-      }
-
-      const padding = 6;
+    // 7. Multi-selection bounding box (hide during rotation)
+    if (selectedIds.length > 1 && toolState !== 'rotating') {
       if (!this.groupBoundingBox) {
         this.groupBoundingBox = new Konva.Rect({
           stroke: 'rgba(120, 120, 120, 0.35)',
@@ -273,11 +260,61 @@ export class SelectionLayer {
         this.layer.add(this.groupBoundingBox);
       }
 
-      this.groupBoundingBox.x(minX - padding);
-      this.groupBoundingBox.y(minY - padding);
-      this.groupBoundingBox.width(maxX - minX + padding * 2);
-      this.groupBoundingBox.height(maxY - minY + padding * 2);
-      this.groupBoundingBox.visible(true);
+      // Check if selection is a single straight row
+      let usedRotatedBox = false;
+      if (selectedRowIds.size === 1) {
+        const rowId = selectedRowIds.values().next().value as ElementId;
+        const row = engine.state.get(rowId);
+        if (row && isRow(row) && row.seatIds.length >= 2 && (!row.curveRadius || Math.abs(row.curveRadius) <= 2)) {
+          const firstSeat = engine.state.get(row.seatIds[0]);
+          const lastSeat = engine.state.get(row.seatIds[row.seatIds.length - 1]);
+          if (firstSeat && lastSeat && isSeat(firstSeat) && isSeat(lastSeat)) {
+            const firstPos = firstSeat.transform.position;
+            const lastPos = lastSeat.transform.position;
+            const seatRadius = firstSeat.radius;
+            const midX = (firstPos.x + lastPos.x) / 2;
+            const midY = (firstPos.y + lastPos.y) / 2;
+            const rowLen = distance(firstPos, lastPos);
+            const padding = 6;
+            const boxWidth = rowLen + 2 * seatRadius + padding * 2;
+            const boxHeight = 2 * seatRadius + padding * 2;
+            const angleDeg = row.orientationAngle * (180 / Math.PI);
+
+            this.groupBoundingBox.x(midX);
+            this.groupBoundingBox.y(midY);
+            this.groupBoundingBox.width(boxWidth);
+            this.groupBoundingBox.height(boxHeight);
+            this.groupBoundingBox.offsetX(boxWidth / 2);
+            this.groupBoundingBox.offsetY(boxHeight / 2);
+            this.groupBoundingBox.rotation(angleDeg);
+            this.groupBoundingBox.visible(true);
+            usedRotatedBox = true;
+          }
+        }
+      }
+
+      if (!usedRotatedBox) {
+        // AABB fallback for multi-element or curved-row selections
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        for (const id of selectedIds) {
+          const el = engine.state.get(id);
+          if (!el) continue;
+          minX = Math.min(minX, el.bounds.x);
+          minY = Math.min(minY, el.bounds.y);
+          maxX = Math.max(maxX, el.bounds.x + el.bounds.width);
+          maxY = Math.max(maxY, el.bounds.y + el.bounds.height);
+        }
+        const padding = 6;
+        this.groupBoundingBox.x(minX - padding);
+        this.groupBoundingBox.y(minY - padding);
+        this.groupBoundingBox.width(maxX - minX + padding * 2);
+        this.groupBoundingBox.height(maxY - minY + padding * 2);
+        // Reset rotation/offset for AABB mode
+        this.groupBoundingBox.offsetX(0);
+        this.groupBoundingBox.offsetY(0);
+        this.groupBoundingBox.rotation(0);
+        this.groupBoundingBox.visible(true);
+      }
     } else {
       if (this.groupBoundingBox) {
         this.groupBoundingBox.visible(false);
@@ -463,18 +500,29 @@ export class SelectionLayer {
   private showRotationHandle(element: import('@/src/domain/types').MapElement, _engine: EditorEngine): void {
     const centerX = element.transform.position.x;
     const centerY = element.transform.position.y;
+    const rotation = element.transform.rotation;
 
-    // Position above the element's top edge
-    const topY = element.bounds.y;
+    const halfHeight = element.bounds.height / 2;
     const handleOffset = 25;
-    const handleX = centerX;
-    const handleY = topY - handleOffset;
+
+    // Rotate offset vectors by the element's current rotation
+    const cos = Math.cos(rotation);
+    const sin = Math.sin(rotation);
+
+    // Top edge point (0, -halfHeight) rotated
+    const topX = centerX - (-halfHeight) * sin;
+    const topY = centerY + (-halfHeight) * cos;
+
+    // Handle point (0, -(halfHeight + handleOffset)) rotated
+    const fullOffset = -(halfHeight + handleOffset);
+    const handleX = centerX - fullOffset * sin;
+    const handleY = centerY + fullOffset * cos;
 
     this.rotationHandlePosition = { x: handleX, y: handleY };
 
-    // Line from element center to handle
+    // Line from top edge to handle
     this.rotationLine = new Konva.Line({
-      points: [centerX, topY, handleX, handleY],
+      points: [topX, topY, handleX, handleY],
       stroke: 'rgba(76, 175, 80, 0.5)',
       strokeWidth: 1,
       listening: false,

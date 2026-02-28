@@ -3,16 +3,20 @@ import type { Area } from '@/src/domain/types';
 import { hexToRgba } from '@/src/utils/color';
 
 export function createAreaShape(area: Area): Konva.Group {
+  const halfW = area.bounds.width / 2;
+  const halfH = area.bounds.height / 2;
+
   const group = new Konva.Group({
-    x: area.bounds.x,
-    y: area.bounds.y,
+    x: area.transform.position.x,
+    y: area.transform.position.y,
+    rotation: area.transform.rotation * (180 / Math.PI),
   });
   group.setAttr('elementId', area.id);
   group.setAttr('elementType', 'area');
 
   const rect = new Konva.Rect({
-    x: 0,
-    y: 0,
+    x: -halfW,
+    y: -halfH,
     width: area.bounds.width,
     height: area.bounds.height,
     fill: hexToRgba(area.color, 0.08),
@@ -31,7 +35,8 @@ export function createAreaShape(area: Area): Konva.Group {
     verticalAlign: 'middle',
     name: 'areaLabel',
   });
-  label.y((area.bounds.height - label.height()) / 2);
+  label.x(-halfW);
+  label.y(-label.height() / 2);
 
   group.add(rect);
   group.add(label);
@@ -40,11 +45,17 @@ export function createAreaShape(area: Area): Konva.Group {
 }
 
 export function updateAreaShape(group: Konva.Group, area: Area): void {
-  group.x(area.bounds.x);
-  group.y(area.bounds.y);
+  const halfW = area.bounds.width / 2;
+  const halfH = area.bounds.height / 2;
+
+  group.x(area.transform.position.x);
+  group.y(area.transform.position.y);
+  group.rotation(area.transform.rotation * (180 / Math.PI));
 
   const rect = group.findOne('.areaRect') as Konva.Rect;
   if (rect) {
+    rect.x(-halfW);
+    rect.y(-halfH);
     rect.width(area.bounds.width);
     rect.height(area.bounds.height);
     rect.fill(hexToRgba(area.color, 0.08));
@@ -56,7 +67,8 @@ export function updateAreaShape(group: Konva.Group, area: Area): void {
     label.text(area.label);
     label.fill(area.color);
     label.width(area.bounds.width);
-    label.y((area.bounds.height - label.height()) / 2);
+    label.x(-halfW);
+    label.y(-label.height() / 2);
   }
 }
 

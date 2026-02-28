@@ -76,6 +76,7 @@ export class SelectionTool extends BaseTool {
     if (rotationHit) {
       this.setupRotation(event.worldPoint);
       this.transition('rotating');
+      this.engine.events.emit('cursor:changed', { cursor: 'grabbing' });
       return;
     }
 
@@ -183,6 +184,24 @@ export class SelectionTool extends BaseTool {
           event.worldPoint.x - this.rotationCenter.x,
         );
         const deltaAngle = currentAngle - this.rotationStartAngle;
+
+        // Compute absolute angle for tooltip display
+        let absoluteAngle = deltaAngle;
+        const primaryId = this.rotatingIds[0];
+        const primaryEl = this.engine.state.get(primaryId);
+        if (primaryEl && isRow(primaryEl)) {
+          absoluteAngle = primaryEl.orientationAngle + deltaAngle;
+        } else {
+          const orig = this.rotationOriginalTransforms.get(primaryId);
+          if (orig) {
+            absoluteAngle = orig.rotation + deltaAngle;
+          }
+        }
+
+        this.engine.events.emit('preview:rotation', {
+          cursorPoint: event.worldPoint,
+          angle: absoluteAngle,
+        });
 
         // Preview rotation (restore originals first, then apply new rotation)
         const cos = Math.cos(deltaAngle);
@@ -535,6 +554,9 @@ export class SelectionTool extends BaseTool {
           );
           this.engine.history.execute(cmd);
         }
+
+        this.engine.events.emit('preview:clear', {});
+        this.engine.events.emit('cursor:changed', { cursor: this.cursor });
 
         // Refresh selection visuals
         this.engine.events.emit('selection:changed', {
@@ -973,6 +995,8 @@ export class SelectionTool extends BaseTool {
         this.engine.state.set(id, restored);
         this.engine.spatialIndex.update(restored);
       }
+      this.engine.events.emit('preview:clear', {});
+      this.engine.events.emit('cursor:changed', { cursor: this.cursor });
       this.engine.events.emit('render:request', {});
     }
     this.dragStartWorld = null;
@@ -1579,8 +1603,16 @@ export class SelectionTool extends BaseTool {
     }
 
     const centerX = primaryEl.transform.position.x;
-    const topY = primaryEl.bounds.y;
-    const handlePos: Point = { x: centerX, y: topY - 25 };
+    const centerY = primaryEl.transform.position.y;
+    const rotation = primaryEl.transform.rotation;
+    const halfHeight = primaryEl.bounds.height / 2;
+    const fullOffset = -(halfHeight + 25);
+    const cos = Math.cos(rotation);
+    const sin = Math.sin(rotation);
+    const handlePos: Point = {
+      x: centerX - fullOffset * sin,
+      y: centerY + fullOffset * cos,
+    };
 
     return distance(point, handlePos) < 10;
   }
