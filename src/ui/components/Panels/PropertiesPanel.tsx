@@ -205,7 +205,7 @@ function SeatProperties({ data, onChange, isSeatPicker }: { data: Seat; onChange
           {renderCategoryMenuItems()}
         </Select>
       </FormControl>
-      {!isSeatPicker && (
+      {!isSeatPicker && (data.rowId != null || data.tableId != null) && (
         <FormControl fullWidth sx={{ mb: 2 }}>
           <InputLabel>Status</InputLabel>
           <Select value={data.status || 'available'} label="Status" onChange={(e) => onChange('status', e.target.value)}>
@@ -347,15 +347,6 @@ function RowProperties({
           {renderCategoryMenuItems()}
         </Select>
       </FormControl>
-      <TextField
-        label="Price"
-        type="number"
-        fullWidth
-        value={data.price ?? 0}
-        onChange={(e) => onChange('price', Number(e.target.value))}
-        inputProps={{ min: 0, step: 0.01 }}
-        sx={{ mb: 2 }}
-      />
     </>
   );
 }
