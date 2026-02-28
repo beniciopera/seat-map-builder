@@ -2,10 +2,15 @@ import type { Command } from './Command';
 import type { Seat, Row, ElementId } from '@/src/domain/types';
 import type { EditorEngine } from '../EditorEngine';
 import { propagateRowLabel } from '@/src/domain/labels';
-import { arcFromSagitta, distance } from '@/src/utils/math';
+import { distance, parabolaPositions } from '@/src/utils/math';
+import { CURVATURE_EPSILON } from '@/src/domain/constraints';
+import type { Point } from '@/src/domain/geometry';
 
 export class ContractRowCommand implements Command {
   readonly name = 'Contract Row';
+
+  // Saved positions of remaining seats for undo
+  private originalSeatPositions = new Map<ElementId, Point>();
 
   constructor(
     private engine: EditorEngine,
@@ -22,22 +27,19 @@ export class ContractRowCommand implements Command {
 
     const remainingSeatIds = this.originalRow.seatIds.filter(id => !removedIds.has(id));
 
-    // 1. Compute arc geometry BEFORE removing seats (so all seats are still accessible)
+    // 1. Compute new sagitta BEFORE removing seats (so all seats are still accessible)
     let newCurveRadius = row.curveRadius;
-    if (row.curveRadius && Math.abs(row.curveRadius) > 2 && remainingSeatIds.length >= 2) {
+    if (row.curveRadius && Math.abs(row.curveRadius) > CURVATURE_EPSILON && remainingSeatIds.length >= 2) {
       const oldFirstSeat = this.engine.state.get(this.originalRow.seatIds[0]) as Seat | undefined;
       const oldLastSeat = this.engine.state.get(this.originalRow.seatIds[this.originalRow.seatIds.length - 1]) as Seat | undefined;
       if (oldFirstSeat && oldLastSeat) {
-        const arc = arcFromSagitta(oldFirstSeat.transform.position, oldLastSeat.transform.position, row.curveRadius);
+        const oldChord = distance(oldFirstSeat.transform.position, oldLastSeat.transform.position);
         const newFirst = this.engine.state.get(remainingSeatIds[0]) as Seat | undefined;
         const newLast = this.engine.state.get(remainingSeatIds[remainingSeatIds.length - 1]) as Seat | undefined;
-        if (newFirst && newLast) {
+        if (newFirst && newLast && oldChord > 0) {
           const newChord = distance(newFirst.transform.position, newLast.transform.position);
-          const halfChord = newChord / 2;
-          if (halfChord < arc.radius) {
-            const sign = row.curveRadius > 0 ? 1 : -1;
-            newCurveRadius = sign * (arc.radius - Math.sqrt(arc.radius * arc.radius - halfChord * halfChord));
-          }
+          const ratio = newChord / oldChord;
+          newCurveRadius = row.curveRadius * ratio * ratio;
         }
       }
     }
@@ -45,7 +47,35 @@ export class ContractRowCommand implements Command {
     // 2. Remove seats from engine
     this.engine.removeElements(this.removedSeats.map(s => s.id));
 
-    // 3. Recompute bounds from remaining seat positions
+    // 3. Reposition remaining seats onto the new parabola if curved
+    if (newCurveRadius && Math.abs(newCurveRadius) > CURVATURE_EPSILON && remainingSeatIds.length >= 2) {
+      const firstSeat = this.engine.state.get(remainingSeatIds[0]) as Seat | undefined;
+      const lastSeat = this.engine.state.get(remainingSeatIds[remainingSeatIds.length - 1]) as Seat | undefined;
+      if (firstSeat && lastSeat) {
+        const newPositions = parabolaPositions(
+          firstSeat.transform.position,
+          lastSeat.transform.position,
+          newCurveRadius,
+          remainingSeatIds.length,
+        );
+        for (let i = 0; i < remainingSeatIds.length; i++) {
+          const seat = this.engine.state.get(remainingSeatIds[i]) as Seat | undefined;
+          if (!seat) continue;
+          this.originalSeatPositions.set(seat.id, { ...seat.transform.position });
+          const pos = newPositions[i];
+          const r = seat.radius;
+          const repositioned: Seat = {
+            ...seat,
+            transform: { ...seat.transform, position: pos },
+            bounds: { x: pos.x - r, y: pos.y - r, width: r * 2, height: r * 2 },
+          };
+          this.engine.state.set(seat.id, repositioned);
+          this.engine.spatialIndex.update(repositioned);
+        }
+      }
+    }
+
+    // 4. Recompute bounds from remaining seat positions
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     for (const seatId of remainingSeatIds) {
       const seat = this.engine.state.get(seatId) as Seat | undefined;
@@ -103,14 +133,23 @@ export class ContractRowCommand implements Command {
     this.engine.state.set(this.rowId, this.originalRow);
     this.engine.spatialIndex.update(this.originalRow);
 
-    // Restore original seat labels
+    // Restore original seat positions and labels
     const labels = propagateRowLabel(this.originalRow.label, this.originalRow.seatIds.length);
     for (let i = 0; i < this.originalRow.seatIds.length; i++) {
-      const seat = this.engine.state.get(this.originalRow.seatIds[i]) as Seat | undefined;
+      const seatId = this.originalRow.seatIds[i];
+      const seat = this.engine.state.get(seatId) as Seat | undefined;
       if (!seat) continue;
-      const relabeled: Seat = { ...seat, label: labels[i] };
-      this.engine.state.set(seat.id, relabeled);
-      this.engine.spatialIndex.update(relabeled);
+      const origPos = this.originalSeatPositions.get(seatId);
+      const pos = origPos || seat.transform.position;
+      const r = seat.radius;
+      const restored: Seat = {
+        ...seat,
+        label: labels[i],
+        transform: { ...seat.transform, position: pos },
+        bounds: { x: pos.x - r, y: pos.y - r, width: r * 2, height: r * 2 },
+      };
+      this.engine.state.set(seatId, restored);
+      this.engine.spatialIndex.update(restored);
     }
 
     this.engine.events.emit('elements:updated', {
