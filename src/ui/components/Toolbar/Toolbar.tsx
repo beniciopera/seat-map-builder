@@ -16,6 +16,7 @@ import CropFreeIcon from '@mui/icons-material/CropFree';
 import TableRestaurantIcon from '@mui/icons-material/TableRestaurant';
 import PanToolIcon from '@mui/icons-material/PanTool';
 import GridViewIcon from '@mui/icons-material/GridView';
+import ColorizeIcon from '@mui/icons-material/Colorize';
 import UndoIcon from '@mui/icons-material/Undo';
 import RedoIcon from '@mui/icons-material/Redo';
 import ZoomInIcon from '@mui/icons-material/ZoomIn';
@@ -65,6 +66,9 @@ export function Toolbar() {
           </ToggleButton>
           <ToggleButton value="grid">
             <Tooltip title="Grid Generator (G)"><GridViewIcon fontSize="small" /></Tooltip>
+          </ToggleButton>
+          <ToggleButton value="seat-picker">
+            <Tooltip title="Seat Picker (P)"><ColorizeIcon fontSize="small" /></Tooltip>
           </ToggleButton>
           <ToggleButton value="pan">
             <Tooltip title="Pan (H / Space+Drag)"><PanToolIcon fontSize="small" /></Tooltip>

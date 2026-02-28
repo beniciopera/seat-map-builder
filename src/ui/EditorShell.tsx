@@ -33,6 +33,7 @@ import { AreaTool } from '@/src/engine/tools/AreaTool';
 import { TableTool } from '@/src/engine/tools/TableTool';
 import { PanTool } from '@/src/engine/tools/PanTool';
 import { GridTool } from '@/src/engine/tools/GridTool';
+import { SeatPickerTool } from '@/src/engine/tools/SeatPickerTool';
 import { bridgeEngineToStore } from '@/src/store/engineBridge';
 
 function EditorInner({ engine }: { engine: EditorEngine }) {
@@ -111,6 +112,7 @@ export function EditorShell() {
     engine.tools.register(new TableTool());
     engine.tools.register(new PanTool());
     engine.tools.register(new GridTool());
+    engine.tools.register(new SeatPickerTool());
 
     // Set default tool
     engine.tools.setActiveTool('selection');

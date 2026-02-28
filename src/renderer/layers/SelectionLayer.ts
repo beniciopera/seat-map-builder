@@ -44,7 +44,9 @@ export class SelectionLayer {
     engine: EditorEngine,
     elementLayer: ElementLayer,
     toolState?: string,
+    toolId?: string,
   ): void {
+    const isSeatPicker = toolId === 'seat-picker';
     // 1. Clear previous selections
     for (const id of this.previousSelectedIds) {
       const el = engine.state.get(id);
@@ -107,9 +109,9 @@ export class SelectionLayer {
       }
     }
 
-    // 3. Draw row shadows for each selected row (skip during editing)
+    // 3. Draw row shadows for each selected row (skip during editing or seat-picker)
     const isEditingRow = toolState === 'rotating' || toolState === 'curving-row' || toolState === 'extending-row';
-    if (!isEditingRow) {
+    if (!isEditingRow && !isSeatPicker) {
     for (const rowId of selectedRowIds) {
       const row = engine.state.get(rowId);
       if (!row || !isRow(row) || row.seatIds.length < 2) continue;
@@ -218,7 +220,7 @@ export class SelectionLayer {
     }
 
     // 5. Show extension handles and curve handle if exactly one row is selected
-    if (selectedRowIds.size === 1) {
+    if (selectedRowIds.size === 1 && !isSeatPicker) {
       const rowId = selectedRowIds.values().next().value as ElementId;
       const row = engine.state.get(rowId);
       if (row && isRow(row) && row.seatIds.length >= 1) {
@@ -230,7 +232,7 @@ export class SelectionLayer {
     }
 
     // 6. Show rotation handle for single element selection
-    if (selectedIds.length >= 1) {
+    if (selectedIds.length >= 1 && !isSeatPicker) {
       // Find the "primary" element (skip seats that belong to rows if a row is also selected)
       let primaryEl = engine.state.get(selectedIds[0]);
       if (primaryEl && isSeat(primaryEl) && primaryEl.rowId && selectedRowIds.size === 1) {
@@ -241,13 +243,11 @@ export class SelectionLayer {
       }
     }
 
-    // 6b. Show resize handles if exactly one area is selected and not rotated
-    if (selectedIds.length === 1) {
+    // 6b. Show resize handles if exactly one area is selected
+    if (selectedIds.length === 1 && !isSeatPicker) {
       const singleEl = engine.state.get(selectedIds[0]);
       if (singleEl && isArea(singleEl)) {
-        if (Math.abs(singleEl.transform.rotation) < 0.01) {
-          this.showResizeHandles(singleEl as Area);
-        }
+        this.showResizeHandles(singleEl as Area);
       }
     }
 
@@ -491,7 +491,7 @@ export class SelectionLayer {
     const curveOffset = row.curveRadius || 0;
     // Clamp handle position to match curve limits
     const chord = distance(firstPos, lastPos);
-    const maxSagitta = (chord / 2) * 0.95;
+    const maxSagitta = (chord / 2) * 0.75;
     const clampedOffset = Math.max(-maxSagitta, Math.min(maxSagitta, curveOffset));
     const handlePos: Point = {
       x: midX + perpX * clampedOffset,
@@ -584,12 +584,30 @@ export class SelectionLayer {
 
   private showResizeHandles(area: Area): void {
     const b = area.bounds;
-    const corners: { corner: string; x: number; y: number; cursor: string }[] = [
-      { corner: 'tl', x: b.x, y: b.y, cursor: 'nwse-resize' },
-      { corner: 'tr', x: b.x + b.width, y: b.y, cursor: 'nesw-resize' },
-      { corner: 'bl', x: b.x, y: b.y + b.height, cursor: 'nesw-resize' },
-      { corner: 'br', x: b.x + b.width, y: b.y + b.height, cursor: 'nwse-resize' },
+    const cx = area.transform.position.x;
+    const cy = area.transform.position.y;
+    const halfW = b.width / 2;
+    const halfH = b.height / 2;
+    const rot = area.transform.rotation;
+    const cosR = Math.cos(rot);
+    const sinR = Math.sin(rot);
+
+    const rotateAroundCenter = (lx: number, ly: number) => ({
+      x: cx + lx * cosR - ly * sinR,
+      y: cy + lx * sinR + ly * cosR,
+    });
+
+    const localCorners = [
+      { corner: 'tl', lx: -halfW, ly: -halfH, cursor: 'nwse-resize' },
+      { corner: 'tr', lx: halfW, ly: -halfH, cursor: 'nesw-resize' },
+      { corner: 'bl', lx: -halfW, ly: halfH, cursor: 'nesw-resize' },
+      { corner: 'br', lx: halfW, ly: halfH, cursor: 'nwse-resize' },
     ];
+
+    const corners = localCorners.map(c => {
+      const rp = rotateAroundCenter(c.lx, c.ly);
+      return { corner: c.corner, x: rp.x, y: rp.y, cursor: c.cursor };
+    });
 
     this.resizeHandlePositions = corners.map(c => ({
       corner: c.corner,

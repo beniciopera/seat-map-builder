@@ -25,9 +25,16 @@ export function useKeyboardShortcuts(engine: EditorEngine) {
       }
       if (ctrl && e.key === 'a') {
         e.preventDefault();
-        const allIds = engine.getAllElements()
+        const activeTool = engine.tools.getActiveTool();
+        let allIds = engine.getAllElements()
           .filter(el => el.visible && !el.locked)
           .map(el => el.id);
+        // In seat-picker mode, only select seats
+        if (activeTool?.id === 'seat-picker') {
+          allIds = engine.getAllElements()
+            .filter(el => el.visible && !el.locked && el.type === 'seat')
+            .map(el => el.id);
+        }
         engine.selection.selectMultiple(allIds);
         engine.events.emit('selection:changed', { selectedIds: allIds });
         return;
@@ -49,6 +56,9 @@ export function useKeyboardShortcuts(engine: EditorEngine) {
           break;
         case 'g':
           engine.tools.setActiveTool('grid');
+          break;
+        case 'p':
+          engine.tools.setActiveTool('seat-picker');
           break;
         case 'h':
           engine.tools.setActiveTool('pan');

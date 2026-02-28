@@ -95,11 +95,13 @@ export class KonvaRenderer {
       this.engine.events.on('elements:removed', ({ elementIds }) => {
         this.elementLayer.removeElements(elementIds);
         const toolState = this.engine.tools.getActiveTool()?.currentState ?? 'idle';
+        const toolId = this.engine.tools.getActiveTool()?.id ?? 'selection';
         this.selectionLayer.updateSelection(
           this.engine.selection.getSelectedIds(),
           this.engine,
           this.elementLayer,
           toolState,
+          toolId,
         );
       }),
     );
@@ -110,11 +112,13 @@ export class KonvaRenderer {
         // Also update selection highlights
         if (this.engine.selection.hasSelection) {
           const toolState = this.engine.tools.getActiveTool()?.currentState ?? 'idle';
+          const toolId = this.engine.tools.getActiveTool()?.id ?? 'selection';
           this.selectionLayer.updateSelection(
             this.engine.selection.getSelectedIds(),
             this.engine,
             this.elementLayer,
             toolState,
+            toolId,
           );
         }
       }),
@@ -123,7 +127,8 @@ export class KonvaRenderer {
     this.unsubscribers.push(
       this.engine.events.on('selection:changed', ({ selectedIds }) => {
         const toolState = this.engine.tools.getActiveTool()?.currentState ?? 'idle';
-        this.selectionLayer.updateSelection(selectedIds, this.engine, this.elementLayer, toolState);
+        const toolId = this.engine.tools.getActiveTool()?.id ?? 'selection';
+        this.selectionLayer.updateSelection(selectedIds, this.engine, this.elementLayer, toolState, toolId);
       }),
     );
 
@@ -131,11 +136,13 @@ export class KonvaRenderer {
       this.engine.events.on('tool:state-changed', () => {
         if (this.engine.selection.hasSelection) {
           const toolState = this.engine.tools.getActiveTool()?.currentState ?? 'idle';
+          const toolId = this.engine.tools.getActiveTool()?.id ?? 'selection';
           this.selectionLayer.updateSelection(
             this.engine.selection.getSelectedIds(),
             this.engine,
             this.elementLayer,
             toolState,
+            toolId,
           );
         }
       }),
@@ -218,7 +225,8 @@ export class KonvaRenderer {
     this.unsubscribers.push(
       this.engine.events.on('layout:loaded', () => {
         this.elementLayer.syncWithEngine(this.engine);
-        this.selectionLayer.updateSelection([], this.engine, this.elementLayer, 'idle');
+        const toolId = this.engine.tools.getActiveTool()?.id ?? 'selection';
+        this.selectionLayer.updateSelection([], this.engine, this.elementLayer, 'idle', toolId);
         this.camera.applyTransform();
       }),
     );

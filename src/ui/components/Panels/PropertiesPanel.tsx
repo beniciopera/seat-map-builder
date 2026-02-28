@@ -38,6 +38,7 @@ export function PropertiesPanel() {
   const selectedElementData = useEditorStore((s) => s.selectedElementData);
   const selectionCount = useEditorStore((s) => s.selectionCount);
   const selectedIds = useEditorStore((s) => s.selectedIds);
+  const activeToolId = useEditorStore((s) => s.activeToolId);
   const [bulkVersion, setBulkVersion] = useState(0);
 
   // For multi-selection: check if all elements are seats/rows/tables
@@ -163,7 +164,7 @@ export function PropertiesPanel() {
       </Typography>
 
       {selectedElementData.type === 'seat' && (
-        <SeatProperties data={selectedElementData as unknown as Seat} onChange={handleChange} />
+        <SeatProperties data={selectedElementData as unknown as Seat} onChange={handleChange} isSeatPicker={activeToolId === 'seat-picker'} />
       )}
       {selectedElementData.type === 'row' && (
         <RowProperties data={selectedElementData as unknown as Row} onChange={handleChange} engine={engine} />
@@ -178,7 +179,7 @@ export function PropertiesPanel() {
   );
 }
 
-function SeatProperties({ data, onChange }: { data: Seat; onChange: (field: string, value: unknown) => void }) {
+function SeatProperties({ data, onChange, isSeatPicker }: { data: Seat; onChange: (field: string, value: unknown) => void; isSeatPicker?: boolean }) {
   return (
     <>
       <FormControl fullWidth sx={{ mb: 2 }}>
@@ -187,15 +188,17 @@ function SeatProperties({ data, onChange }: { data: Seat; onChange: (field: stri
           {renderCategoryMenuItems()}
         </Select>
       </FormControl>
-      <FormControl fullWidth sx={{ mb: 2 }}>
-        <InputLabel>Status</InputLabel>
-        <Select value={data.status || 'available'} label="Status" onChange={(e) => onChange('status', e.target.value)}>
-          <MenuItem value="available">Available</MenuItem>
-          <MenuItem value="reserved">Reserved</MenuItem>
-          <MenuItem value="blocked">Blocked</MenuItem>
-          <MenuItem value="sold">Sold</MenuItem>
-        </Select>
-      </FormControl>
+      {!isSeatPicker && (
+        <FormControl fullWidth sx={{ mb: 2 }}>
+          <InputLabel>Status</InputLabel>
+          <Select value={data.status || 'available'} label="Status" onChange={(e) => onChange('status', e.target.value)}>
+            <MenuItem value="available">Available</MenuItem>
+            <MenuItem value="reserved">Reserved</MenuItem>
+            <MenuItem value="blocked">Blocked</MenuItem>
+            <MenuItem value="sold">Sold</MenuItem>
+          </Select>
+        </FormControl>
+      )}
     </>
   );
 }
