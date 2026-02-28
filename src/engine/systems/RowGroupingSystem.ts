@@ -1,4 +1,4 @@
-import type { ElementId, Seat, Row } from '@/src/domain/types';
+import type { ElementId, Seat, Row, MapElement } from '@/src/domain/types';
 import type { Point } from '@/src/domain/geometry';
 import type { EditorEngine } from '../EditorEngine';
 import { generateElementId } from '@/src/domain/ids';
@@ -68,22 +68,77 @@ export class RowGroupingSystem {
     const row = this.engine.state.get(rowId);
     if (!row || row.type !== 'row') return [];
 
-    const newLabels = propagateRowLabel(newLabel, row.seatIds.length);
-    const updatedSeats: Seat[] = [];
+    const oldLabel = (row as Row).label;
 
-    row.seatIds.forEach((seatId, i) => {
-      const seat = this.engine.state.get(seatId);
-      if (seat && seat.type === 'seat') {
-        const updated: Seat = { ...seat, label: newLabels[i] };
-        this.engine.state.set(seatId, updated);
-        updatedSeats.push(updated);
-      }
-    });
-
-    // Update row label too
+    // Update row label
     this.engine.state.set(rowId, { ...row, label: newLabel });
 
+    // Renumber the new label group; the changed row goes last
+    const updatedSeats = this.renumberLabelGroup(newLabel, rowId);
+
+    // If old label was different, renumber that group too
+    if (oldLabel !== newLabel && oldLabel) {
+      const oldGroupSeats = this.renumberLabelGroup(oldLabel);
+      updatedSeats.push(...oldGroupSeats);
+    }
+
     return updatedSeats;
+  }
+
+  /**
+   * Find all rows sharing the given label, order them, and renumber all their
+   * seats with continuous numbering. When changedRowId is provided, that row is
+   * placed last so existing rows keep their numbering and the newcomer continues.
+   * seatOrderDirection is NOT used here — it only affects row label position.
+   */
+  renumberLabelGroup(label: string, changedRowId?: ElementId): Seat[] {
+    const rows = this.getRowsByLabel(label, changedRowId);
+    if (rows.length === 0) return [];
+
+    const updatedSeats: Seat[] = [];
+    let seatIndex = 0;
+
+    for (const row of rows) {
+      const labels = propagateRowLabel(label, row.seatIds.length, seatIndex);
+
+      for (let i = 0; i < row.seatIds.length; i++) {
+        const seat = this.engine.state.get(row.seatIds[i]);
+        if (seat && seat.type === 'seat') {
+          const updated: Seat = { ...seat, label: labels[i] };
+          this.engine.state.set(seat.id, updated);
+          this.engine.spatialIndex.update(updated);
+          updatedSeats.push(updated);
+        }
+      }
+      seatIndex += row.seatIds.length;
+    }
+
+    return updatedSeats;
+  }
+
+  /**
+   * Get all rows with a given label, sorted spatially (top-to-bottom, left-to-right).
+   * If changedRowId is provided, that row is moved to the end of the list.
+   */
+  private getRowsByLabel(label: string, changedRowId?: ElementId): Row[] {
+    const rows: Row[] = [];
+    for (const el of this.engine.state.getAll()) {
+      if (el.type === 'row' && (el as Row).label === label) {
+        rows.push(el as Row);
+      }
+    }
+
+    rows.sort((a, b) => {
+      if (changedRowId) {
+        if (a.id === changedRowId && b.id !== changedRowId) return 1;
+        if (b.id === changedRowId && a.id !== changedRowId) return -1;
+      }
+      const dy = a.transform.position.y - b.transform.position.y;
+      if (Math.abs(dy) > 1) return dy;
+      return a.transform.position.x - b.transform.position.x;
+    });
+
+    return rows;
   }
 
   reorderSeats(row: Row): ElementId[] {

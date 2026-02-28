@@ -9,6 +9,7 @@ import { PlaceGridCommand } from '../commands/PlaceGridCommand';
 
 export class PlacementSystem {
   private engine: EditorEngine;
+  private standaloneSeatCounter = 0;
 
   constructor(engine: EditorEngine) {
     this.engine = engine;
@@ -54,7 +55,8 @@ export class PlacementSystem {
       }
     } else {
       for (let i = 0; i < seats.length; i++) {
-        (seats[i] as { label: string }).label = `S-${this.engine.state.size + i + 1}`;
+        this.standaloneSeatCounter++;
+        (seats[i] as { label: string }).label = `S-${this.standaloneSeatCounter}`;
       }
     }
 
