@@ -39,7 +39,7 @@ export interface Row extends BaseElement {
   readonly spacing: number;
   readonly seatOrderDirection: SeatOrderDirection;
   readonly areaId: ElementId | null;
-  readonly curveRadius: number; // 0 = straight, non-zero = curved arc
+  readonly curveRadius: number; // 0 = straight, non-zero = sagitta (parabolic curve displacement)
   readonly category: RowCategory;
   readonly price: number;
 }
