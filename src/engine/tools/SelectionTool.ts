@@ -12,7 +12,7 @@ import { RotateElementsCommand } from '../commands/RotateElementsCommand';
 import { ResizeElementCommand } from '../commands/ResizeElementCommand';
 import { distance, angleBetween, parabolaPositions, parabolaTangentLocal, parabolaArcLength, parabolaXAtArcLength, parabolaY } from '@/src/utils/math';
 import { generateElementId } from '@/src/domain/ids';
-import { DEFAULT_SEAT_RADIUS, CURVATURE_EPSILON } from '@/src/domain/constraints';
+import { DEFAULT_SEAT_RADIUS, isRowCurvatureEffectivelyStraight } from '@/src/domain/constraints';
 import type { SnapTarget, AngleSnapTarget } from '../systems/SnapEngine';
 
 export class SelectionTool extends BaseTool {
@@ -429,7 +429,7 @@ export class SelectionTool extends BaseTool {
         const clampedDisplacement = Math.max(-maxSagitta, Math.min(maxSagitta, perpDisplacement));
 
         // Snap to straight during live preview when curvature is near zero
-        const previewDisplacement = Math.abs(clampedDisplacement) < CURVATURE_EPSILON ? 0 : clampedDisplacement;
+        const previewDisplacement = isRowCurvatureEffectivelyStraight(clampedDisplacement, chord) ? 0 : clampedDisplacement;
 
         // Reposition seats along curve (live preview)
         this.repositionSeatsAlongCurve(curveRow, origFirst, origLast, previewDisplacement);
@@ -718,7 +718,7 @@ export class SelectionTool extends BaseTool {
         const clampedDisplacement = Math.max(-maxSagitta, Math.min(maxSagitta, perpDisplacement));
 
         // Snap to straight when curvature is below threshold
-        const finalDisplacement = Math.abs(clampedDisplacement) < CURVATURE_EPSILON ? 0 : clampedDisplacement;
+        const finalDisplacement = isRowCurvatureEffectivelyStraight(clampedDisplacement, chord) ? 0 : clampedDisplacement;
 
         if (finalDisplacement !== this.curveOriginalRadius) {
           // Restore original positions first
@@ -1087,8 +1087,7 @@ export class SelectionTool extends BaseTool {
    * Uses parabolic curve math.
    */
   private getCurvedRowTangents(row: Row): { leftDir: Point; rightDir: Point; chord: number; sagitta: number } | null {
-    if (!this.engine || !row.curveRadius || Math.abs(row.curveRadius) <= CURVATURE_EPSILON) return null;
-    if (row.seatIds.length < 2) return null;
+    if (!this.engine || row.seatIds.length < 2) return null;
 
     const firstSeat = this.engine.state.get(row.seatIds[0]);
     const lastSeat = this.engine.state.get(row.seatIds[row.seatIds.length - 1]);
@@ -1097,7 +1096,9 @@ export class SelectionTool extends BaseTool {
     const firstPos = firstSeat.transform.position;
     const lastPos = lastSeat.transform.position;
     const chord = distance(firstPos, lastPos);
-    const sagitta = row.curveRadius;
+    if (isRowCurvatureEffectivelyStraight(row.curveRadius ?? 0, chord)) return null;
+
+    const sagitta = row.curveRadius ?? 0;
     const halfChord = chord / 2;
 
     // Local tangent at left endpoint (-chord/2)
@@ -1615,7 +1616,8 @@ export class SelectionTool extends BaseTool {
     const seatCount = row.seatIds.length;
     if (seatCount < 2) return positions;
 
-    if (Math.abs(perpDisplacement) < CURVATURE_EPSILON) {
+    const chord = distance(origFirst, origLast);
+    if (isRowCurvatureEffectivelyStraight(perpDisplacement, chord)) {
       // Essentially straight — distribute seats linearly
       for (let i = 0; i < seatCount; i++) {
         const t = i / (seatCount - 1);

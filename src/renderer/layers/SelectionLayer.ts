@@ -8,7 +8,7 @@ import { applySeatSelection, clearSeatSelection } from '../shapes/SeatShape';
 import { applyAreaSelection, clearAreaSelection } from '../shapes/AreaShape';
 import { applyTableSelection, clearTableSelection } from '../shapes/TableShape';
 import { distance, angleBetween, parabolaY, parabolaTangentLocal } from '@/src/utils/math';
-import { CURVATURE_EPSILON } from '@/src/domain/constraints';
+import { isRowCurvatureEffectivelyStraight } from '@/src/domain/constraints';
 
 export class SelectionLayer {
   readonly layer: Konva.Layer;
@@ -126,9 +126,7 @@ export class SelectionLayer {
       const seatRadius = firstSeat.radius;
 
       const chord = distance(firstPos, lastPos);
-      const isEffectivelyStraight = !row.curveRadius
-        || Math.abs(row.curveRadius) <= CURVATURE_EPSILON
-        || (chord > 0 && Math.abs(row.curveRadius) / chord < 0.02);
+      const isEffectivelyStraight = isRowCurvatureEffectivelyStraight(row.curveRadius ?? 0, chord);
 
       if (!isEffectivelyStraight) {
         // Curved shadow: draw parabola band as polygon
@@ -400,10 +398,10 @@ export class SelectionLayer {
     let leftPos: Point;
     let rightPos: Point;
 
-    if (row.curveRadius && Math.abs(row.curveRadius) > CURVATURE_EPSILON && row.seatIds.length >= 2) {
+    const chord = distance(firstPos, lastPos);
+    if (row.seatIds.length >= 2 && !isRowCurvatureEffectivelyStraight(row.curveRadius ?? 0, chord)) {
       // Curved row: position handles along parabola tangent at endpoints
-      const chord = distance(firstPos, lastPos);
-      const sagitta = row.curveRadius;
+      const sagitta = row.curveRadius ?? 0;
       const halfChord = chord / 2;
       const angle = angleBetween(firstPos, lastPos);
       const cosA = Math.cos(angle);
