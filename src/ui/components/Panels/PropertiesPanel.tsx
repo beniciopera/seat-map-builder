@@ -2,7 +2,7 @@
 import { Box, Typography, TextField, Select, MenuItem, FormControl, InputLabel } from '@mui/material';
 import { useEditorStore } from '@/src/store/useEditorStore';
 import { useEngine } from '@/src/ui/hooks/useEngine';
-import type { Seat, Row, Area, Table, SeatCategory, ElementId } from '@/src/domain/types';
+import type { Seat, Row, Area, Table, SeatCategory, SeatOrderDirection, ElementId } from '@/src/domain/types';
 import { UpdatePropertiesCommand } from '@/src/engine/commands/UpdatePropertiesCommand';
 import { ChangeCategoryCommand } from '@/src/engine/commands/ChangeCategoryCommand';
 import { categoryColor } from '@/src/utils/color';
@@ -164,12 +164,13 @@ export function PropertiesPanel() {
     );
   }
 
-  const handleChange = (field: string, value: unknown) => {
-    const el = engine.getElement(selectedElementData.id);
+  const handleChange = (field: string, value: unknown, elementId?: ElementId) => {
+    const id = elementId ?? selectedElementData.id;
+    const el = engine.getElement(id);
     if (!el) return;
     const oldProps = { [field]: (el as unknown as Record<string, unknown>)[field] };
     const newProps = { [field]: value };
-    const cmd = new UpdatePropertiesCommand(engine, selectedElementData.id, oldProps, newProps);
+    const cmd = new UpdatePropertiesCommand(engine, id, oldProps, newProps);
     engine.history.execute(cmd);
   };
 
@@ -225,15 +226,42 @@ function RowProperties({
   engine,
 }: {
   data: Row;
-  onChange: (field: string, value: unknown) => void;
+  onChange: (field: string, value: unknown, elementId?: ElementId) => void;
   engine: ReturnType<typeof useEngine>;
 }) {
-  const handleLabelChange = (newLabel: string) => {
-    onChange('label', newLabel);
-    // Propagate to child seats and notify renderer
-    const updatedSeats = engine.rowGrouping.propagateLabel(data.id, newLabel);
-    if (updatedSeats.length > 0) {
-      engine.events.emit('elements:updated', { elements: updatedSeats });
+  const [localLabel, setLocalLabel] = useState(data.label || '');
+  const inputRef = useRef<HTMLInputElement>(null);
+  const localLabelRef = useRef(localLabel);
+  localLabelRef.current = localLabel;
+
+  useEffect(() => {
+    setLocalLabel(data.label || '');
+  }, [data.label]);
+
+  // When unmounting (e.g. user clicked map and selection changed), commit pending label for this row
+  useEffect(() => {
+    return () => {
+      const trimmed = localLabelRef.current.trim();
+      if (trimmed.length > 0 && trimmed !== (data.label || '')) {
+        const el = engine.getElement(data.id);
+        if (el) {
+          const oldProps = { label: (el as Row).label };
+          const newProps = { label: trimmed };
+          const cmd = new UpdatePropertiesCommand(engine, data.id, oldProps, newProps);
+          engine.history.execute(cmd);
+        }
+      }
+    };
+  }, [data.id, data.label, engine]);
+
+  const lastValidLabel = data.label || 'A';
+
+  const handleLabelBlur = () => {
+    const trimmed = localLabel.trim();
+    if (trimmed.length > 0) {
+      onChange('label', trimmed);
+    } else {
+      setLocalLabel(lastValidLabel);
     }
   };
 
@@ -267,10 +295,26 @@ function RowProperties({
       <TextField
         label="Row Label"
         fullWidth
-        value={data.label || ''}
-        onChange={(e) => handleLabelChange(e.target.value)}
+        inputRef={inputRef}
+        value={localLabel}
+        onChange={(e) => setLocalLabel(e.target.value)}
+        onFocus={() => inputRef.current?.select()}
+        onBlur={handleLabelBlur}
+        helperText={localLabel.trim().length === 0 ? 'Label cannot be empty' : undefined}
+        error={localLabel.trim().length === 0}
         sx={{ mb: 2 }}
       />
+      <FormControl fullWidth sx={{ mb: 2 }}>
+        <InputLabel shrink>Seat order</InputLabel>
+        <Select
+          value={data.seatOrderDirection || 'left-to-right'}
+          label="Seat order"
+          onChange={(e) => onChange('seatOrderDirection', e.target.value as SeatOrderDirection)}
+        >
+          <MenuItem value="left-to-right">1 → 10</MenuItem>
+          <MenuItem value="right-to-left">10 → 1</MenuItem>
+        </Select>
+      </FormControl>
       <FormControl fullWidth sx={{ mb: 2 }}>
         <InputLabel shrink>Category</InputLabel>
         <Select
@@ -316,16 +360,34 @@ function RowProperties({
   );
 }
 
-function AreaProperties({ data, onChange, engine }: { data: Area; onChange: (field: string, value: unknown) => void; engine: ReturnType<typeof useEngine> }) {
+function AreaProperties({ data, onChange, engine }: { data: Area; onChange: (field: string, value: unknown, elementId?: ElementId) => void; engine: ReturnType<typeof useEngine> }) {
   const [localLabel, setLocalLabel] = useState(data.label);
   const [localColor, setLocalColor] = useState(data.color || '#2196F3');
   const colorBeforeDrag = useRef(data.color || '#2196F3');
   const pendingColorCmd = useRef(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const localLabelRef = useRef(localLabel);
+  localLabelRef.current = localLabel;
 
   useEffect(() => {
     setLocalLabel(data.label);
   }, [data.label]);
+
+  // When unmounting (e.g. user clicked map), commit pending area label
+  useEffect(() => {
+    return () => {
+      const trimmed = localLabelRef.current.trim();
+      if (trimmed.length > 0 && trimmed !== data.label) {
+        const el = engine.getElement(data.id);
+        if (el && el.type === 'area') {
+          const oldProps = { label: (el as Area).label };
+          const newProps = { label: trimmed };
+          const cmd = new UpdatePropertiesCommand(engine, data.id, oldProps, newProps);
+          engine.history.execute(cmd);
+        }
+      }
+    };
+  }, [data.id, data.label, engine]);
 
   useEffect(() => {
     setLocalColor(data.color || '#2196F3');
