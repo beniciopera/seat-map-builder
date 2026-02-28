@@ -10,6 +10,16 @@ export const DEFAULT_TABLE_RADIUS = 32;
 export const DEFAULT_TABLE_SEAT_GAP = 4;
 export const CURVATURE_EPSILON = 3; // abs(sagitta) below this snaps to perfectly straight
 
+/**
+ * Single canonical "effectively straight" rule for row curvature.
+ * Used by shadow, seat layout, commit, and extend/contract so they stay in sync.
+ */
+export function isRowCurvatureEffectivelyStraight(sagitta: number, chord: number): boolean {
+  if (!sagitta || Math.abs(sagitta) <= CURVATURE_EPSILON) return true;
+  if (chord > 0 && Math.abs(sagitta) / chord < 0.02) return true;
+  return false;
+}
+
 export interface ValidationResult {
   readonly valid: boolean;
   readonly errors: readonly string[];
