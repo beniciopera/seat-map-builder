@@ -45,7 +45,6 @@ export class RowGroupingSystem {
       seatOrderDirection: 'left-to-right',
       curveRadius: 0,
       category: 'planta1',
-      price: 0,
       areaId: null,
       locked: false,
       visible: true,

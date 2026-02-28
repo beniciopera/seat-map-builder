@@ -19,13 +19,12 @@ export class PlacementSystem {
     if (positions.length === 0) return;
 
     const radius = DEFAULT_SEAT_RADIUS;
-    const seats: Seat[] = positions.map((pos, _i) => ({
+    const seats: Seat[] = positions.map((pos) => ({
       id: generateElementId(),
       type: 'seat' as const,
       label: '',
       rowId: null,
       tableId: null,
-      status: 'available' as const,
       category: 'planta1' as const,
       radius,
       locked: false,
@@ -47,11 +46,12 @@ export class PlacementSystem {
     const row = this.engine.rowGrouping.detectRow(positions, seatIds);
 
     if (row) {
-      // Assign row labels to seats
+      // Assign row labels and status to seats (row seats have status)
       const rowLabel = row.label;
       for (let i = 0; i < seats.length; i++) {
         (seats[i] as { label: string }).label = `${rowLabel}-${i + 1}`;
         (seats[i] as { rowId: typeof row.id }).rowId = row.id;
+        (seats[i] as { status: 'available' }).status = 'available';
       }
     } else {
       for (let i = 0; i < seats.length; i++) {
@@ -80,7 +80,6 @@ export class PlacementSystem {
         label: '',
         rowId: null,
         tableId: null,
-        status: 'available' as const,
         category: 'planta1' as const,
         radius,
         locked: false,
@@ -105,6 +104,7 @@ export class PlacementSystem {
         for (let i = 0; i < seats.length; i++) {
           (seats[i] as { label: string }).label = `${rowLabel}-${i + 1}`;
           (seats[i] as { rowId: typeof row.id }).rowId = row.id;
+          (seats[i] as { status: 'available' }).status = 'available';
         }
         allRows.push(row);
       }
