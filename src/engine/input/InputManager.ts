@@ -164,10 +164,18 @@ export class InputManager {
 
   private handleWheel(e: WheelEvent): void {
     e.preventDefault();
-    const inputEvent = this.toInputEvent(e);
-    const zoomFactor = e.deltaY > 0 ? 0.9 : 1.1;
-    const newZoom = this.engine.viewport.zoom * zoomFactor;
-    this.engine.viewport.setZoomAtPoint(newZoom, inputEvent.screenPoint);
+
+    if (e.altKey) {
+      // Alt/Option + Scroll → Zoom (cursor-centered)
+      const inputEvent = this.toInputEvent(e);
+      const zoomFactor = e.deltaY > 0 ? 0.9 : 1.1;
+      const newZoom = this.engine.viewport.zoom * zoomFactor;
+      this.engine.viewport.setZoomAtPoint(newZoom, inputEvent.screenPoint);
+    } else {
+      // Normal Scroll → Pan
+      this.engine.viewport.panBy(-e.deltaX, -e.deltaY);
+    }
+
     this.engine.events.emit('viewport:changed', {
       zoom: this.engine.viewport.zoom,
       panX: this.engine.viewport.panX,
