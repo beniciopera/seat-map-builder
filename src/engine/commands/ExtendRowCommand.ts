@@ -1,5 +1,5 @@
 import type { Command } from './Command';
-import type { Seat, Row, ElementId } from '@/src/domain/types';
+import type { Seat, Row, ElementId, MapElement } from '@/src/domain/types';
 import type { EditorEngine } from '../EditorEngine';
 import { propagateRowLabel } from '@/src/domain/labels';
 import { distance, parabolaPositions, angleBetween } from '@/src/utils/math';
@@ -142,19 +142,19 @@ export class ExtendRowCommand implements Command {
     this.engine.state.set(this.rowId, updatedRow);
     this.engine.spatialIndex.update(updatedRow);
 
-    // 5. Relabel all seats
-    const labels = propagateRowLabel(updatedRow.label, updatedSeatIds.length);
-    for (let i = 0; i < updatedSeatIds.length; i++) {
-      const seat = this.engine.state.get(updatedSeatIds[i]) as Seat | undefined;
-      if (!seat) continue;
-      const relabeled: Seat = { ...seat, label: labels[i] };
-      this.engine.state.set(seat.id, relabeled);
-      this.engine.spatialIndex.update(relabeled);
+    // 5. Relabel all seats in the label group (continuous numbering across rows)
+    const groupUpdatedSeats = this.engine.rowGrouping.renumberLabelGroup(updatedRow.label);
+
+    const allUpdated: MapElement[] = [updatedRow, ...groupUpdatedSeats];
+    // Also include this row's seats that weren't caught by group renumber (shouldn't happen, but safe)
+    for (const seatId of updatedSeatIds) {
+      if (!groupUpdatedSeats.some(s => s.id === seatId)) {
+        const seat = this.engine.state.get(seatId);
+        if (seat) allUpdated.push(seat);
+      }
     }
 
-    this.engine.events.emit('elements:updated', {
-      elements: [updatedRow, ...updatedSeatIds.map(id => this.engine.state.get(id)!).filter(Boolean)],
-    });
+    this.engine.events.emit('elements:updated', { elements: allUpdated });
     this.engine.events.emit('render:request', {});
   }
 
@@ -167,28 +167,36 @@ export class ExtendRowCommand implements Command {
     this.engine.state.set(this.rowId, this.originalRow);
     this.engine.spatialIndex.update(this.originalRow);
 
-    // Restore original seat positions and labels
-    const labels = propagateRowLabel(this.originalRow.label, this.originalRow.seatIds.length);
+    // Restore original seat positions
     for (let i = 0; i < this.originalRow.seatIds.length; i++) {
       const seatId = this.originalRow.seatIds[i];
       const seat = this.engine.state.get(seatId) as Seat | undefined;
       if (!seat) continue;
       const origPos = this.originalSeatPositions.get(seatId);
-      const pos = origPos || seat.transform.position;
-      const r = seat.radius;
-      const restored: Seat = {
-        ...seat,
-        label: labels[i],
-        transform: { ...seat.transform, position: pos },
-        bounds: { x: pos.x - r, y: pos.y - r, width: r * 2, height: r * 2 },
-      };
-      this.engine.state.set(seatId, restored);
-      this.engine.spatialIndex.update(restored);
+      if (origPos) {
+        const r = seat.radius;
+        const restored: Seat = {
+          ...seat,
+          transform: { ...seat.transform, position: origPos },
+          bounds: { x: origPos.x - r, y: origPos.y - r, width: r * 2, height: r * 2 },
+        };
+        this.engine.state.set(seatId, restored);
+        this.engine.spatialIndex.update(restored);
+      }
     }
 
-    this.engine.events.emit('elements:updated', {
-      elements: [this.originalRow, ...this.originalRow.seatIds.map(id => this.engine.state.get(id)!).filter(Boolean)],
-    });
+    // Renumber the label group to restore continuous numbering
+    const groupUpdatedSeats = this.engine.rowGrouping.renumberLabelGroup(this.originalRow.label);
+
+    const allUpdated: MapElement[] = [this.originalRow, ...groupUpdatedSeats];
+    for (const seatId of this.originalRow.seatIds) {
+      if (!groupUpdatedSeats.some(s => s.id === seatId)) {
+        const seat = this.engine.state.get(seatId);
+        if (seat) allUpdated.push(seat);
+      }
+    }
+
+    this.engine.events.emit('elements:updated', { elements: allUpdated });
     this.engine.events.emit('render:request', {});
   }
 }
