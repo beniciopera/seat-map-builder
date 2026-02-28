@@ -22,7 +22,8 @@ export interface Seat extends BaseElement {
   readonly label: string;
   readonly rowId: ElementId | null;
   readonly tableId: ElementId | null;
-  readonly status: SeatStatus;
+  /** Only present for seats in a row or table; individual (standalone) seats have no status. */
+  readonly status?: SeatStatus;
   readonly category: SeatCategory;
   readonly radius: number;
 }
@@ -41,7 +42,6 @@ export interface Row extends BaseElement {
   readonly areaId: ElementId | null;
   readonly curveRadius: number; // 0 = straight, non-zero = sagitta (parabolic curve displacement)
   readonly category: RowCategory;
-  readonly price: number;
 }
 
 export interface Area extends BaseElement {
