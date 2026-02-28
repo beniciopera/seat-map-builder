@@ -149,8 +149,8 @@ export class KonvaRenderer {
     );
 
     this.unsubscribers.push(
-      this.engine.events.on('preview:seats', ({ seats, anchorPoint }) => {
-        this.previewLayer.showSeatPreviews(seats, anchorPoint);
+      this.engine.events.on('preview:seats', ({ seats, anchorPoint, cursorPoint, angle, seatCount }) => {
+        this.previewLayer.showSeatPreviews(seats, anchorPoint, cursorPoint, angle, seatCount);
       }),
     );
 
@@ -169,6 +169,12 @@ export class KonvaRenderer {
     this.unsubscribers.push(
       this.engine.events.on('preview:area', ({ rect, color, label, cursorPoint }) => {
         this.previewLayer.showAreaPreview(rect, color, label, cursorPoint);
+      }),
+    );
+
+    this.unsubscribers.push(
+      this.engine.events.on('preview:rotation', ({ cursorPoint, angle }) => {
+        this.previewLayer.showRotationTooltip(cursorPoint, angle);
       }),
     );
 

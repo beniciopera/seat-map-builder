@@ -13,11 +13,12 @@ export interface EditorEventMap {
   'history:changed': { canUndo: boolean; canRedo: boolean };
   'cursor:changed': { cursor: string };
   'render:request': Record<string, never>;
-  'preview:seats': { seats: Point[]; anchorPoint: Point };
+  'preview:seats': { seats: Point[]; anchorPoint: Point; cursorPoint?: Point; angle?: number; seatCount?: number };
   'preview:contraction': { seatIds: ElementId[] };
   'preview:table': { center: Point; tableRadius: number; seatCount: number; seatGap: number; label: string };
   'preview:grid': { seats: Point[]; anchorPoint: Point; cursorPoint: Point; angle: number; rows: number; cols: number };
   'preview:area': { rect: Rect; color: string; label: string; cursorPoint: Point };
+  'preview:rotation': { cursorPoint: Point; angle: number };
   'preview:clear': Record<string, never>;
   'boxselect:update': { rect: Rect };
   'boxselect:end': Record<string, never>;

@@ -1,6 +1,7 @@
 import { BaseTool } from './Tool';
 import type { EditorInputEvent } from '../input/InputEvent';
 import type { Point } from '@/src/domain/geometry';
+import { angleBetween } from '@/src/utils/math';
 
 export class SeatPlacementTool extends BaseTool {
   readonly id = 'seat-placement';
@@ -118,6 +119,9 @@ export class SeatPlacementTool extends BaseTool {
     this.engine.events.emit('preview:seats', {
       seats,
       anchorPoint: this.anchorPoint,
+      cursorPoint: endPoint,
+      angle: angleBetween(this.anchorPoint, endPoint),
+      seatCount: seats.length,
     });
   }
 

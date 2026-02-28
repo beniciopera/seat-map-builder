@@ -16,6 +16,12 @@ export class PreviewLayer {
   private gridPoolActive = 0;
   private gridLinePoolActive = 0;
 
+  // Pooled tooltip for seat preview
+  private seatTooltip: Konva.Text | null = null;
+
+  // Pooled tooltip for rotation preview
+  private rotationTooltip: Konva.Text | null = null;
+
   // Pooled nodes for area preview
   private areaRect: Konva.Rect | null = null;
   private areaLabel: Konva.Text | null = null;
@@ -25,7 +31,7 @@ export class PreviewLayer {
     this.layer = new Konva.Layer({ name: 'preview', listening: false });
   }
 
-  showSeatPreviews(seats: Point[], anchorPoint: Point): void {
+  showSeatPreviews(seats: Point[], anchorPoint: Point, cursorPoint?: Point, angle?: number, seatCount?: number): void {
     this.clearGhosts();
 
     // Draw anchor marker
@@ -73,6 +79,28 @@ export class PreviewLayer {
       });
       this.layer.add(ghost);
       this.ghostNodes.push(ghost);
+    }
+
+    // Floating tooltip with angle and seat count (only during row dragging)
+    if (cursorPoint && angle !== undefined && seatCount !== undefined && seatCount > 1) {
+      const degrees = Math.round((angle * 180) / Math.PI);
+      const tooltipText = `${degrees}°  ${seatCount}`;
+
+      if (!this.seatTooltip) {
+        this.seatTooltip = new Konva.Text({
+          fontSize: 13,
+          fontStyle: 'bold',
+          fill: 'rgba(233, 30, 99, 0.9)',
+          listening: false,
+        });
+        this.layer.add(this.seatTooltip);
+      }
+      this.seatTooltip.text(tooltipText);
+      this.seatTooltip.x(cursorPoint.x + 16);
+      this.seatTooltip.y(cursorPoint.y - 20);
+      this.seatTooltip.visible(true);
+    } else if (this.seatTooltip) {
+      this.seatTooltip.visible(false);
     }
 
     this.layer.batchDraw();
@@ -338,6 +366,26 @@ export class PreviewLayer {
     this.layer.batchDraw();
   }
 
+  showRotationTooltip(cursorPoint: Point, angle: number): void {
+    const degrees = Math.round((angle * 180) / Math.PI);
+    const tooltipText = `${degrees}°`;
+
+    if (!this.rotationTooltip) {
+      this.rotationTooltip = new Konva.Text({
+        fontSize: 13,
+        fontStyle: 'bold',
+        fill: 'rgba(233, 30, 99, 0.9)',
+        listening: false,
+      });
+      this.layer.add(this.rotationTooltip);
+    }
+    this.rotationTooltip.text(tooltipText);
+    this.rotationTooltip.x(cursorPoint.x + 16);
+    this.rotationTooltip.y(cursorPoint.y - 20);
+    this.rotationTooltip.visible(true);
+    this.layer.batchDraw();
+  }
+
   private clearAreaPool(): void {
     if (this.areaRect) this.areaRect.visible(false);
     if (this.areaLabel) this.areaLabel.visible(false);
@@ -348,6 +396,12 @@ export class PreviewLayer {
     this.clearGhosts();
     this.clearGridPool();
     this.clearAreaPool();
+    if (this.seatTooltip) {
+      this.seatTooltip.visible(false);
+    }
+    if (this.rotationTooltip) {
+      this.rotationTooltip.visible(false);
+    }
     if (this.anchorMarker) {
       this.anchorMarker.visible(false);
     }
