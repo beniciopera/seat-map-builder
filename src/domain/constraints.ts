@@ -8,6 +8,7 @@ export const DEFAULT_SEAT_RADIUS = 12;
 export const DEFAULT_SEAT_SPACING = 14;
 export const DEFAULT_TABLE_RADIUS = 32;
 export const DEFAULT_TABLE_SEAT_GAP = 4;
+export const MAX_ROW_ARC_ANGLE = Math.PI; // 180 degrees — arc must never double back
 
 export interface ValidationResult {
   readonly valid: boolean;

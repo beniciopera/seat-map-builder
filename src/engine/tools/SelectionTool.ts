@@ -12,7 +12,7 @@ import { RotateElementsCommand } from '../commands/RotateElementsCommand';
 import { ResizeElementCommand } from '../commands/ResizeElementCommand';
 import { distance, angleBetween, arcFromSagitta } from '@/src/utils/math';
 import { generateElementId } from '@/src/domain/ids';
-import { DEFAULT_SEAT_RADIUS } from '@/src/domain/constraints';
+import { DEFAULT_SEAT_RADIUS, MAX_ROW_ARC_ANGLE } from '@/src/domain/constraints';
 import type { SnapTarget, AngleSnapTarget } from '../systems/SnapEngine';
 
 export class SelectionTool extends BaseTool {
@@ -50,6 +50,7 @@ export class SelectionTool extends BaseTool {
   private resizeOriginalBounds: Rect | null = null;
   private resizeOriginalPosition: Point | null = null;
   private resizeDragStart: Point | null = null;
+  private resizeOriginalRotation: number = 0;
 
   onPointerDown(event: EditorInputEvent): void {
     if (!this.engine) return;
@@ -66,6 +67,7 @@ export class SelectionTool extends BaseTool {
         this.resizeOriginalBounds = { ...area.bounds };
         this.resizeOriginalPosition = { ...area.transform.position };
         this.resizeDragStart = event.worldPoint;
+        this.resizeOriginalRotation = area.transform.rotation;
         this.transition('resizing-area');
         return;
       }
@@ -318,8 +320,16 @@ export class SelectionTool extends BaseTool {
       case 'resizing-area': {
         if (!this.resizeDragStart || !this.resizingAreaId || !this.resizeCorner || !this.resizeOriginalBounds) break;
 
-        const dx = event.worldPoint.x - this.resizeDragStart.x;
-        const dy = event.worldPoint.y - this.resizeDragStart.y;
+        const worldDx = event.worldPoint.x - this.resizeDragStart.x;
+        const worldDy = event.worldPoint.y - this.resizeDragStart.y;
+
+        // Rotate world deltas into the area's local (unrotated) frame
+        const rot = this.resizeOriginalRotation;
+        const cosNR = Math.cos(-rot);
+        const sinNR = Math.sin(-rot);
+        const dx = worldDx * cosNR - worldDy * sinNR;
+        const dy = worldDx * sinNR + worldDy * cosNR;
+
         const ob = this.resizeOriginalBounds;
         let newX = ob.x;
         let newY = ob.y;
@@ -362,7 +372,17 @@ export class SelectionTool extends BaseTool {
         }
 
         const resizeBounds: Rect = { x: newX, y: newY, width: newW, height: newH };
-        const resizeCenter: Point = { x: newX + newW / 2, y: newY + newH / 2 };
+
+        // Compute new center in local space, then rotate back to world space
+        const localCenterX = newX + newW / 2;
+        const localCenterY = newY + newH / 2;
+        const origCenter = this.resizeOriginalPosition!;
+        const cosR = Math.cos(rot);
+        const sinR = Math.sin(rot);
+        const resizeCenter: Point = {
+          x: origCenter.x + (localCenterX - origCenter.x) * cosR - (localCenterY - origCenter.y) * sinR,
+          y: origCenter.y + (localCenterX - origCenter.x) * sinR + (localCenterY - origCenter.y) * cosR,
+        };
 
         const areaEl = this.engine.state.get(this.resizingAreaId);
         if (areaEl) {
@@ -405,7 +425,7 @@ export class SelectionTool extends BaseTool {
 
         // Clamp to prevent arc from exceeding ~171° (semicircle limit)
         const chord = distance(origFirst, origLast);
-        const maxSagitta = (chord / 2) * 0.95;
+        const maxSagitta = (chord / 2) * 0.75;
         const clampedDisplacement = Math.max(-maxSagitta, Math.min(maxSagitta, perpDisplacement));
 
         // Reposition seats along arc (live preview)
@@ -443,7 +463,7 @@ export class SelectionTool extends BaseTool {
 
         if (projection >= effectiveSpacing) {
           // Expansion: preview ghost seats outward
-          const newSeatCount = Math.floor(projection / effectiveSpacing);
+          let newSeatCount = Math.floor(projection / effectiveSpacing);
           const anchorSeatId = this.extendingHandle === 'right'
             ? row.seatIds[row.seatIds.length - 1]
             : row.seatIds[0];
@@ -457,8 +477,15 @@ export class SelectionTool extends BaseTool {
             const arc = tangents.arc;
             const angleStep = arc.angleDiff / (row.seatIds.length - 1);
 
+            // Cap arc seats so the arc doesn't exceed the maximum angle
+            const currentArcAngle = Math.abs(arc.angleDiff);
+            const remainingAngle = MAX_ROW_ARC_ANGLE - currentArcAngle;
+            const maxNewSeats = Math.max(0, Math.floor(remainingAngle / Math.abs(angleStep)));
+            const arcSeatCount = Math.min(newSeatCount, maxNewSeats);
+            const straightSeatCount = newSeatCount - arcSeatCount;
+
             if (this.extendingHandle === 'right') {
-              for (let i = 1; i <= newSeatCount; i++) {
+              for (let i = 1; i <= arcSeatCount; i++) {
                 const a = arc.endAngle + angleStep * i;
                 previewPositions.push({
                   x: arc.center.x + Math.cos(a) * arc.radius,
@@ -466,11 +493,27 @@ export class SelectionTool extends BaseTool {
                 });
               }
             } else {
-              for (let i = 1; i <= newSeatCount; i++) {
+              for (let i = 1; i <= arcSeatCount; i++) {
                 const a = arc.startAngle - angleStep * i;
                 previewPositions.push({
                   x: arc.center.x + Math.cos(a) * arc.radius,
                   y: arc.center.y + Math.sin(a) * arc.radius,
+                });
+              }
+            }
+
+            // Continue with straight seats along the tangent direction
+            if (straightSeatCount > 0) {
+              const tangentDir = this.extendingHandle === 'right'
+                ? tangents.rightDir
+                : tangents.leftDir;
+              const lastPos = previewPositions.length > 0
+                ? previewPositions[previewPositions.length - 1]
+                : anchorSeat.transform.position;
+              for (let i = 1; i <= straightSeatCount; i++) {
+                previewPositions.push({
+                  x: lastPos.x + tangentDir.x * row.spacing * i,
+                  y: lastPos.y + tangentDir.y * row.spacing * i,
                 });
               }
             }
@@ -685,7 +728,7 @@ export class SelectionTool extends BaseTool {
 
         // Clamp to prevent arc from exceeding ~171° (semicircle limit)
         const chord = distance(origFirst, origLast);
-        const maxSagitta = (chord / 2) * 0.95;
+        const maxSagitta = (chord / 2) * 0.75;
         const clampedDisplacement = Math.max(-maxSagitta, Math.min(maxSagitta, perpDisplacement));
 
         if (Math.abs(clampedDisplacement) > 2) {
@@ -742,7 +785,7 @@ export class SelectionTool extends BaseTool {
 
         if (projection >= extEffectiveSpacing) {
           // Expansion: add new seats
-          const newSeatCount = Math.floor(projection / extEffectiveSpacing);
+          let newSeatCount = Math.floor(projection / extEffectiveSpacing);
           const anchorSeatId = this.extendingHandle === 'right'
             ? row.seatIds[row.seatIds.length - 1]
             : row.seatIds[0];
@@ -756,7 +799,14 @@ export class SelectionTool extends BaseTool {
               const arc = extTangents.arc;
               const angleStep = arc.angleDiff / (row.seatIds.length - 1);
 
-              for (let i = 1; i <= newSeatCount; i++) {
+              // Cap arc seats so the arc doesn't exceed the maximum angle
+              const currentArcAngle = Math.abs(arc.angleDiff);
+              const remainingAngle = MAX_ROW_ARC_ANGLE - currentArcAngle;
+              const maxNewSeats = Math.max(0, Math.floor(remainingAngle / Math.abs(angleStep)));
+              const arcSeatCount = Math.min(newSeatCount, maxNewSeats);
+              const straightSeatCount = newSeatCount - arcSeatCount;
+
+              for (let i = 1; i <= arcSeatCount; i++) {
                 let a: number;
                 if (this.extendingHandle === 'right') {
                   a = arc.endAngle + angleStep * i;
@@ -791,6 +841,47 @@ export class SelectionTool extends BaseTool {
                   visible: true,
                 };
                 newSeats.push(seat);
+              }
+
+              // Continue with straight seats along the tangent direction
+              if (straightSeatCount > 0) {
+                const tangentDir = this.extendingHandle === 'right'
+                  ? extTangents.rightDir
+                  : extTangents.leftDir;
+                const lastPos = newSeats.length > 0
+                  ? newSeats[newSeats.length - 1].transform.position
+                  : anchorSeat.transform.position;
+                const r = anchorSeat.radius || DEFAULT_SEAT_RADIUS;
+                for (let i = 1; i <= straightSeatCount; i++) {
+                  const pos = {
+                    x: lastPos.x + tangentDir.x * row.spacing * i,
+                    y: lastPos.y + tangentDir.y * row.spacing * i,
+                  };
+                  const seat: Seat = {
+                    id: generateElementId(),
+                    type: 'seat',
+                    label: '',
+                    rowId: row.id,
+                    tableId: null,
+                    status: 'available',
+                    category: anchorSeat.category,
+                    radius: r,
+                    transform: {
+                      position: pos,
+                      rotation: 0,
+                      scale: { x: 1, y: 1 },
+                    },
+                    bounds: {
+                      x: pos.x - r,
+                      y: pos.y - r,
+                      width: r * 2,
+                      height: r * 2,
+                    },
+                    locked: false,
+                    visible: true,
+                  };
+                  newSeats.push(seat);
+                }
               }
             } else {
               const angle = row.orientationAngle;
@@ -829,15 +920,17 @@ export class SelectionTool extends BaseTool {
               }
             }
 
-            const originalRow: Row = { ...row, seatIds: [...row.seatIds] };
-            const cmd = new ExtendRowCommand(
-              this.engine,
-              row.id,
-              newSeats,
-              this.extendingHandle,
-              originalRow,
-            );
-            this.engine.history.execute(cmd);
+            if (newSeats.length > 0) {
+              const originalRow: Row = { ...row, seatIds: [...row.seatIds] };
+              const cmd = new ExtendRowCommand(
+                this.engine,
+                row.id,
+                newSeats,
+                this.extendingHandle,
+                originalRow,
+              );
+              this.engine.history.execute(cmd);
+            }
           }
         } else if (projection <= -extEffectiveSpacing && row.seatIds.length > 1) {
           // Contraction: remove seats from the dragged side
@@ -1500,7 +1593,7 @@ export class SelectionTool extends BaseTool {
     const curveOffset = row.curveRadius || 0;
     // Clamp handle position to match curve limits
     const chord = distance(firstPos, lastPos);
-    const maxSagitta = (chord / 2) * 0.95;
+    const maxSagitta = (chord / 2) * 0.75;
     const clampedOffset = Math.max(-maxSagitta, Math.min(maxSagitta, curveOffset));
     const handlePos: Point = clampedOffset === 0
       ? { x: midX + perpX * 20, y: midY + perpY * 20 }
@@ -1622,15 +1715,30 @@ export class SelectionTool extends BaseTool {
     if (!el || !isArea(el)) return null;
 
     const b = el.bounds;
-    const corners: { corner: string; pos: Point }[] = [
-      { corner: 'tl', pos: { x: b.x, y: b.y } },
-      { corner: 'tr', pos: { x: b.x + b.width, y: b.y } },
-      { corner: 'bl', pos: { x: b.x, y: b.y + b.height } },
-      { corner: 'br', pos: { x: b.x + b.width, y: b.y + b.height } },
+    const cx = el.transform.position.x;
+    const cy = el.transform.position.y;
+    const rot = el.transform.rotation;
+    const cosR = Math.cos(rot);
+    const sinR = Math.sin(rot);
+
+    const halfW = b.width / 2;
+    const halfH = b.height / 2;
+
+    const rotateAroundCenter = (lx: number, ly: number): Point => ({
+      x: cx + lx * cosR - ly * sinR,
+      y: cy + lx * sinR + ly * cosR,
+    });
+
+    const localCorners = [
+      { corner: 'tl', lx: -halfW, ly: -halfH },
+      { corner: 'tr', lx: halfW, ly: -halfH },
+      { corner: 'bl', lx: -halfW, ly: halfH },
+      { corner: 'br', lx: halfW, ly: halfH },
     ];
 
-    for (const c of corners) {
-      if (distance(point, c.pos) < 10) {
+    for (const c of localCorners) {
+      const rotated = rotateAroundCenter(c.lx, c.ly);
+      if (distance(point, rotated) < 10) {
         return { areaId: el.id, corner: c.corner };
       }
     }
