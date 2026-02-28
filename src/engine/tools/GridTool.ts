@@ -37,17 +37,10 @@ export class GridTool extends BaseTool {
         if (snapResult.snappedX || snapResult.snappedY || snapResult.angleTargets.length > 0) {
           this.engine.guidelines.computeFromSnapTargets(snapResult.matchedTargets, snapResult.angleTargets);
         }
-        this.transition('origin-set');
+        this.transition('dragging');
         break;
       }
-      case 'origin-set': {
-        // Lock the first row direction
-        if (this.firstRowPositions.length > 0) {
-          this.transition('width-defined');
-        }
-        break;
-      }
-      case 'width-defined': {
+      case 'rows-pending': {
         // Commit the grid
         this.commitGrid(event.worldPoint);
         break;
@@ -68,11 +61,11 @@ export class GridTool extends BaseTool {
         this.updateIdlePreview(event.worldPoint);
         break;
       }
-      case 'origin-set': {
+      case 'dragging': {
         this.updateFirstRowPreview(event.worldPoint);
         break;
       }
-      case 'width-defined': {
+      case 'rows-pending': {
         this.updateGridPreview(event.worldPoint);
         break;
       }
@@ -80,7 +73,13 @@ export class GridTool extends BaseTool {
   }
 
   onPointerUp(_event: EditorInputEvent): void {
-    // Clicks are handled in onPointerDown
+    if (this._currentState !== 'dragging') return;
+
+    if (this.firstRowPositions.length > 0) {
+      this.transition('rows-pending');
+    } else {
+      this.cancel();
+    }
   }
 
   onKeyDown(event: KeyboardEvent): void {

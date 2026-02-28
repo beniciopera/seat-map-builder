@@ -10,9 +10,9 @@ import { ContractRowCommand } from '../commands/ContractRowCommand';
 import { CurveRowCommand } from '../commands/CurveRowCommand';
 import { RotateElementsCommand } from '../commands/RotateElementsCommand';
 import { ResizeElementCommand } from '../commands/ResizeElementCommand';
-import { distance, angleBetween, arcFromSagitta } from '@/src/utils/math';
+import { distance, angleBetween, parabolaPositions, parabolaTangentLocal, parabolaArcLength, parabolaXAtArcLength, parabolaY } from '@/src/utils/math';
 import { generateElementId } from '@/src/domain/ids';
-import { DEFAULT_SEAT_RADIUS, MAX_ROW_ARC_ANGLE } from '@/src/domain/constraints';
+import { DEFAULT_SEAT_RADIUS, CURVATURE_EPSILON } from '@/src/domain/constraints';
 import type { SnapTarget, AngleSnapTarget } from '../systems/SnapEngine';
 
 export class SelectionTool extends BaseTool {
@@ -428,8 +428,11 @@ export class SelectionTool extends BaseTool {
         const maxSagitta = (chord / 2) * 0.75;
         const clampedDisplacement = Math.max(-maxSagitta, Math.min(maxSagitta, perpDisplacement));
 
-        // Reposition seats along arc (live preview)
-        this.repositionSeatsAlongCurve(curveRow, origFirst, origLast, clampedDisplacement);
+        // Snap to straight during live preview when curvature is near zero
+        const previewDisplacement = Math.abs(clampedDisplacement) < CURVATURE_EPSILON ? 0 : clampedDisplacement;
+
+        // Reposition seats along curve (live preview)
+        this.repositionSeatsAlongCurve(curveRow, origFirst, origLast, previewDisplacement);
         break;
       }
       case 'extending-row': {
@@ -451,8 +454,9 @@ export class SelectionTool extends BaseTool {
         if (tangents) {
           const dir = this.extendingHandle === 'right' ? tangents.rightDir : tangents.leftDir;
           projection = dragDelta.x * dir.x + dragDelta.y * dir.y;
-          // Arc length per seat
-          effectiveSpacing = tangents.arc.radius * Math.abs(tangents.arc.angleDiff) / (row.seatIds.length - 1);
+          // Arc length per seat along parabola
+          const halfChord = tangents.chord / 2;
+          effectiveSpacing = parabolaArcLength(-halfChord, halfChord, tangents.sagitta, tangents.chord) / (row.seatIds.length - 1);
         } else {
           const angle = row.orientationAngle;
           const dirX = Math.cos(angle);
@@ -463,7 +467,7 @@ export class SelectionTool extends BaseTool {
 
         if (projection >= effectiveSpacing) {
           // Expansion: preview ghost seats outward
-          let newSeatCount = Math.floor(projection / effectiveSpacing);
+          const newSeatCount = Math.floor(projection / effectiveSpacing);
           const anchorSeatId = this.extendingHandle === 'right'
             ? row.seatIds[row.seatIds.length - 1]
             : row.seatIds[0];
@@ -473,49 +477,31 @@ export class SelectionTool extends BaseTool {
           const previewPositions: Point[] = [];
 
           if (tangents) {
-            // Place new seats along the arc continuation
-            const arc = tangents.arc;
-            const angleStep = arc.angleDiff / (row.seatIds.length - 1);
+            // Place new seats along parabola continuation
+            const firstSeat = this.engine.state.get(row.seatIds[0]) as Seat | undefined;
+            const lastSeat = this.engine.state.get(row.seatIds[row.seatIds.length - 1]) as Seat | undefined;
+            if (!firstSeat || !lastSeat) break;
+            const firstPos = firstSeat.transform.position;
+            const lastPos = lastSeat.transform.position;
+            const chord = tangents.chord;
+            const sagitta = tangents.sagitta;
+            const halfChord = chord / 2;
+            const angle = angleBetween(firstPos, lastPos);
+            const cosA = Math.cos(angle);
+            const sinA = Math.sin(angle);
+            const midX = (firstPos.x + lastPos.x) / 2;
+            const midY = (firstPos.y + lastPos.y) / 2;
 
-            // Cap arc seats so the arc doesn't exceed the maximum angle
-            const currentArcAngle = Math.abs(arc.angleDiff);
-            const remainingAngle = MAX_ROW_ARC_ANGLE - currentArcAngle;
-            const maxNewSeats = Math.max(0, Math.floor(remainingAngle / Math.abs(angleStep)));
-            const arcSeatCount = Math.min(newSeatCount, maxNewSeats);
-            const straightSeatCount = newSeatCount - arcSeatCount;
+            const direction: 1 | -1 = this.extendingHandle === 'right' ? 1 : -1;
+            const startX = direction === 1 ? halfChord : -halfChord;
 
-            if (this.extendingHandle === 'right') {
-              for (let i = 1; i <= arcSeatCount; i++) {
-                const a = arc.endAngle + angleStep * i;
-                previewPositions.push({
-                  x: arc.center.x + Math.cos(a) * arc.radius,
-                  y: arc.center.y + Math.sin(a) * arc.radius,
-                });
-              }
-            } else {
-              for (let i = 1; i <= arcSeatCount; i++) {
-                const a = arc.startAngle - angleStep * i;
-                previewPositions.push({
-                  x: arc.center.x + Math.cos(a) * arc.radius,
-                  y: arc.center.y + Math.sin(a) * arc.radius,
-                });
-              }
-            }
-
-            // Continue with straight seats along the tangent direction
-            if (straightSeatCount > 0) {
-              const tangentDir = this.extendingHandle === 'right'
-                ? tangents.rightDir
-                : tangents.leftDir;
-              const lastPos = previewPositions.length > 0
-                ? previewPositions[previewPositions.length - 1]
-                : anchorSeat.transform.position;
-              for (let i = 1; i <= straightSeatCount; i++) {
-                previewPositions.push({
-                  x: lastPos.x + tangentDir.x * row.spacing * i,
-                  y: lastPos.y + tangentDir.y * row.spacing * i,
-                });
-              }
+            for (let i = 1; i <= newSeatCount; i++) {
+              const lx = parabolaXAtArcLength(startX, effectiveSpacing * i, sagitta, chord, direction);
+              const ly = parabolaY(lx, sagitta, chord);
+              previewPositions.push({
+                x: midX + lx * cosA - ly * sinA,
+                y: midY + lx * sinA + ly * cosA,
+              });
             }
           } else {
             const angle = row.orientationAngle;
@@ -731,7 +717,10 @@ export class SelectionTool extends BaseTool {
         const maxSagitta = (chord / 2) * 0.75;
         const clampedDisplacement = Math.max(-maxSagitta, Math.min(maxSagitta, perpDisplacement));
 
-        if (Math.abs(clampedDisplacement) > 2) {
+        // Snap to straight when curvature is below threshold
+        const finalDisplacement = Math.abs(clampedDisplacement) < CURVATURE_EPSILON ? 0 : clampedDisplacement;
+
+        if (finalDisplacement !== this.curveOriginalRadius) {
           // Restore original positions first
           for (const [seatId, origPos] of this.curveOriginalPositions) {
             const seat = this.engine.state.get(seatId) as Seat | undefined;
@@ -745,8 +734,8 @@ export class SelectionTool extends BaseTool {
           }
 
           // Compute new seat positions for the command
-          const newPositions = this.computeCurvePositions(curveRow, origFirst, origLast, clampedDisplacement);
-          const cmd = new CurveRowCommand(this.engine, this.curvingRowId, clampedDisplacement, newPositions);
+          const newPositions = this.computeCurvePositions(curveRow, origFirst, origLast, finalDisplacement);
+          const cmd = new CurveRowCommand(this.engine, this.curvingRowId, finalDisplacement, newPositions);
           this.engine.history.execute(cmd);
         }
 
@@ -774,7 +763,8 @@ export class SelectionTool extends BaseTool {
         if (extTangents) {
           const dir = this.extendingHandle === 'right' ? extTangents.rightDir : extTangents.leftDir;
           projection = dragDelta.x * dir.x + dragDelta.y * dir.y;
-          extEffectiveSpacing = extTangents.arc.radius * Math.abs(extTangents.arc.angleDiff) / (row.seatIds.length - 1);
+          const halfChord = extTangents.chord / 2;
+          extEffectiveSpacing = parabolaArcLength(-halfChord, halfChord, extTangents.sagitta, extTangents.chord) / (row.seatIds.length - 1);
         } else {
           const angle = row.orientationAngle;
           const dirX = Math.cos(angle);
@@ -785,7 +775,7 @@ export class SelectionTool extends BaseTool {
 
         if (projection >= extEffectiveSpacing) {
           // Expansion: add new seats
-          let newSeatCount = Math.floor(projection / extEffectiveSpacing);
+          const newSeatCount = Math.floor(projection / extEffectiveSpacing);
           const anchorSeatId = this.extendingHandle === 'right'
             ? row.seatIds[row.seatIds.length - 1]
             : row.seatIds[0];
@@ -794,68 +784,31 @@ export class SelectionTool extends BaseTool {
             const newSeats: Seat[] = [];
 
             if (extTangents) {
-              // Place new seats along arc continuation
-              // Use the actual angular step between existing seats
-              const arc = extTangents.arc;
-              const angleStep = arc.angleDiff / (row.seatIds.length - 1);
+              // Place new seats along parabola continuation
+              const firstSeat = this.engine.state.get(row.seatIds[0]) as Seat | undefined;
+              const lastSeat = this.engine.state.get(row.seatIds[row.seatIds.length - 1]) as Seat | undefined;
+              if (firstSeat && lastSeat) {
+                const firstPos = firstSeat.transform.position;
+                const lastPos = lastSeat.transform.position;
+                const chord = extTangents.chord;
+                const sagitta = extTangents.sagitta;
+                const halfChord = chord / 2;
+                const angle = angleBetween(firstPos, lastPos);
+                const cosA = Math.cos(angle);
+                const sinA = Math.sin(angle);
+                const midX = (firstPos.x + lastPos.x) / 2;
+                const midY = (firstPos.y + lastPos.y) / 2;
 
-              // Cap arc seats so the arc doesn't exceed the maximum angle
-              const currentArcAngle = Math.abs(arc.angleDiff);
-              const remainingAngle = MAX_ROW_ARC_ANGLE - currentArcAngle;
-              const maxNewSeats = Math.max(0, Math.floor(remainingAngle / Math.abs(angleStep)));
-              const arcSeatCount = Math.min(newSeatCount, maxNewSeats);
-              const straightSeatCount = newSeatCount - arcSeatCount;
-
-              for (let i = 1; i <= arcSeatCount; i++) {
-                let a: number;
-                if (this.extendingHandle === 'right') {
-                  a = arc.endAngle + angleStep * i;
-                } else {
-                  a = arc.startAngle - angleStep * i;
-                }
-                const pos = {
-                  x: arc.center.x + Math.cos(a) * arc.radius,
-                  y: arc.center.y + Math.sin(a) * arc.radius,
-                };
-                const seat: Seat = {
-                  id: generateElementId(),
-                  type: 'seat',
-                  label: '',
-                  rowId: row.id,
-                  tableId: null,
-                  status: 'available',
-                  category: anchorSeat.category,
-                  radius: anchorSeat.radius || DEFAULT_SEAT_RADIUS,
-                  transform: {
-                    position: pos,
-                    rotation: 0,
-                    scale: { x: 1, y: 1 },
-                  },
-                  bounds: {
-                    x: pos.x - (anchorSeat.radius || DEFAULT_SEAT_RADIUS),
-                    y: pos.y - (anchorSeat.radius || DEFAULT_SEAT_RADIUS),
-                    width: (anchorSeat.radius || DEFAULT_SEAT_RADIUS) * 2,
-                    height: (anchorSeat.radius || DEFAULT_SEAT_RADIUS) * 2,
-                  },
-                  locked: false,
-                  visible: true,
-                };
-                newSeats.push(seat);
-              }
-
-              // Continue with straight seats along the tangent direction
-              if (straightSeatCount > 0) {
-                const tangentDir = this.extendingHandle === 'right'
-                  ? extTangents.rightDir
-                  : extTangents.leftDir;
-                const lastPos = newSeats.length > 0
-                  ? newSeats[newSeats.length - 1].transform.position
-                  : anchorSeat.transform.position;
+                const direction: 1 | -1 = this.extendingHandle === 'right' ? 1 : -1;
+                const startX = direction === 1 ? halfChord : -halfChord;
                 const r = anchorSeat.radius || DEFAULT_SEAT_RADIUS;
-                for (let i = 1; i <= straightSeatCount; i++) {
+
+                for (let i = 1; i <= newSeatCount; i++) {
+                  const lx = parabolaXAtArcLength(startX, extEffectiveSpacing * i, sagitta, chord, direction);
+                  const ly = parabolaY(lx, sagitta, chord);
                   const pos = {
-                    x: lastPos.x + tangentDir.x * row.spacing * i,
-                    y: lastPos.y + tangentDir.y * row.spacing * i,
+                    x: midX + lx * cosA - ly * sinA,
+                    y: midY + lx * sinA + ly * cosA,
                   };
                   const seat: Seat = {
                     id: generateElementId(),
@@ -969,10 +922,17 @@ export class SelectionTool extends BaseTool {
 
         this.engine.events.emit('preview:clear', {});
 
-        // Re-select the row to refresh handles
-        this.engine.events.emit('selection:changed', {
-          selectedIds: this.engine.selection.getSelectedIds(),
-        });
+        // Re-select the row with updated seatIds so new/remaining seats are in the selection
+        {
+          const updatedRow = this.engine.state.get(this.extendingRowId) as Row | undefined;
+          if (updatedRow && isRow(updatedRow)) {
+            const newSelection = [updatedRow.id, ...updatedRow.seatIds] as ElementId[];
+            this.engine.selection.selectMultiple(newSelection);
+          }
+          this.engine.events.emit('selection:changed', {
+            selectedIds: this.engine.selection.getSelectedIds(),
+          });
+        }
         break;
       }
     }
@@ -1124,9 +1084,10 @@ export class SelectionTool extends BaseTool {
   /**
    * For a curved row, compute the outward tangent directions at the first and last seats.
    * Returns null if the row is straight (curveRadius ~0).
+   * Uses parabolic curve math.
    */
-  private getCurvedRowTangents(row: Row): { leftDir: Point; rightDir: Point; arc: ReturnType<typeof arcFromSagitta> } | null {
-    if (!this.engine || !row.curveRadius || Math.abs(row.curveRadius) <= 2) return null;
+  private getCurvedRowTangents(row: Row): { leftDir: Point; rightDir: Point; chord: number; sagitta: number } | null {
+    if (!this.engine || !row.curveRadius || Math.abs(row.curveRadius) <= CURVATURE_EPSILON) return null;
     if (row.seatIds.length < 2) return null;
 
     const firstSeat = this.engine.state.get(row.seatIds[0]);
@@ -1135,25 +1096,33 @@ export class SelectionTool extends BaseTool {
 
     const firstPos = firstSeat.transform.position;
     const lastPos = lastSeat.transform.position;
-    const arc = arcFromSagitta(firstPos, lastPos, row.curveRadius);
+    const chord = distance(firstPos, lastPos);
+    const sagitta = row.curveRadius;
+    const halfChord = chord / 2;
 
-    // Tangent in the direction of increasing parameter t (startAngle → endAngle):
-    // At angle θ: tangent = sign(angleDiff) * (-sin(θ), cos(θ))
-    const s = arc.angleDiff > 0 ? 1 : -1;
+    // Local tangent at left endpoint (-chord/2)
+    const tLeft = parabolaTangentLocal(-halfChord, sagitta, chord);
+    // Local tangent at right endpoint (+chord/2)
+    const tRight = parabolaTangentLocal(halfChord, sagitta, chord);
 
-    // Right end (last seat at endAngle): outward = same direction as arc traversal
-    const rightDir: Point = {
-      x: s * -Math.sin(arc.endAngle),
-      y: s * Math.cos(arc.endAngle),
-    };
+    // Transform local tangents to world space
+    const angle = angleBetween(firstPos, lastPos);
+    const cosA = Math.cos(angle);
+    const sinA = Math.sin(angle);
 
-    // Left end (first seat at startAngle): outward = opposite direction
-    const leftDir: Point = {
-      x: s * Math.sin(arc.startAngle),
-      y: s * -Math.cos(arc.startAngle),
-    };
+    // Left outward = opposite of curve traversal direction at left end
+    const leftRawX = -(tLeft.tx * cosA - tLeft.ty * sinA);
+    const leftRawY = -(tLeft.tx * sinA + tLeft.ty * cosA);
+    const leftLen = Math.sqrt(leftRawX * leftRawX + leftRawY * leftRawY);
+    const leftDir: Point = { x: leftRawX / leftLen, y: leftRawY / leftLen };
 
-    return { leftDir, rightDir, arc };
+    // Right outward = same as curve traversal direction at right end
+    const rightRawX = tRight.tx * cosA - tRight.ty * sinA;
+    const rightRawY = tRight.tx * sinA + tRight.ty * cosA;
+    const rightLen = Math.sqrt(rightRawX * rightRawX + rightRawY * rightRawY);
+    const rightDir: Point = { x: rightRawX / rightLen, y: rightRawY / rightLen };
+
+    return { leftDir, rightDir, chord, sagitta };
   }
 
   private hitTestHandles(point: Point): { rowId: ElementId; handle: 'left' | 'right' } | null {
@@ -1646,9 +1615,7 @@ export class SelectionTool extends BaseTool {
     const seatCount = row.seatIds.length;
     if (seatCount < 2) return positions;
 
-    const rowDist = distance(origFirst, origLast);
-
-    if (Math.abs(perpDisplacement) < 2) {
+    if (Math.abs(perpDisplacement) < CURVATURE_EPSILON) {
       // Essentially straight — distribute seats linearly
       for (let i = 0; i < seatCount; i++) {
         const t = i / (seatCount - 1);
@@ -1660,46 +1627,10 @@ export class SelectionTool extends BaseTool {
       return positions;
     }
 
-    // Compute arc from chord and sagitta (perpendicular displacement at midpoint)
-    // sagitta = perpDisplacement, chord = rowDist
-    // radius = (chord^2 / (8 * sagitta)) + sagitta / 2
-    const sagitta = perpDisplacement;
-    const chord = rowDist;
-    const radius = (chord * chord) / (8 * Math.abs(sagitta)) + Math.abs(sagitta) / 2;
-
-    const cAngle = angleBetween(origFirst, origLast);
-    const perpX = -Math.sin(cAngle);
-    const perpY = Math.cos(cAngle);
-
-    const midX = (origFirst.x + origLast.x) / 2;
-    const midY = (origFirst.y + origLast.y) / 2;
-
-    // Center of the arc circle is on the perpendicular, offset from midpoint
-    const sign = sagitta > 0 ? 1 : -1;
-    const centerOffset = radius - Math.abs(sagitta);
-    const arcCenter: Point = {
-      x: midX - perpX * centerOffset * sign,
-      y: midY - perpY * centerOffset * sign,
-    };
-
-    // Calculate start and end angles on the arc
-    const startAngle = Math.atan2(origFirst.y - arcCenter.y, origFirst.x - arcCenter.x);
-    const endAngle = Math.atan2(origLast.y - arcCenter.y, origLast.x - arcCenter.x);
-
-    // Determine angle span, ensuring we go the right way around
-    let angleDiff = endAngle - startAngle;
-    // Normalize to [-PI, PI]
-    while (angleDiff > Math.PI) angleDiff -= 2 * Math.PI;
-    while (angleDiff < -Math.PI) angleDiff += 2 * Math.PI;
-
-    // Distribute seats evenly along the arc
+    // Use parabolic curve to distribute seats evenly by arc-length
+    const worldPositions = parabolaPositions(origFirst, origLast, perpDisplacement, seatCount);
     for (let i = 0; i < seatCount; i++) {
-      const t = i / (seatCount - 1);
-      const a = startAngle + angleDiff * t;
-      positions.set(row.seatIds[i], {
-        x: arcCenter.x + Math.cos(a) * radius,
-        y: arcCenter.y + Math.sin(a) * radius,
-      });
+      positions.set(row.seatIds[i], worldPositions[i]);
     }
 
     return positions;
