@@ -11,8 +11,8 @@ export class MoveElementsCommand implements Command {
 
   constructor(engine: EditorEngine, before: Map<ElementId, Point>, after: Map<ElementId, Point>) {
     this.engine = engine;
-    this.before = before;
-    this.after = after;
+    this.before = new Map(Array.from(before, ([id, p]) => [id, { x: p.x, y: p.y }]));
+    this.after = new Map(Array.from(after, ([id, p]) => [id, { x: p.x, y: p.y }]));
   }
 
   execute(): void {

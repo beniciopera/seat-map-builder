@@ -583,6 +583,7 @@ export class SelectionTool extends BaseTool {
               bounds: { ...el.bounds, x: origPos.x - el.bounds.width / 2, y: origPos.y - el.bounds.height / 2 },
             } as MapElement;
             this.engine.state.set(id, restored);
+            this.engine.spatialIndex.update(restored);
           }
 
           // Now create command with the proper after positions
