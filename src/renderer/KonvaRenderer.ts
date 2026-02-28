@@ -22,6 +22,7 @@ export class KonvaRenderer {
     this.engine = engine;
     this.camera = new Camera(engine.viewport);
     this.elementLayer = new ElementLayer();
+    this.elementLayer.setElementGetter(id => engine.state.get(id));
     this.selectionLayer = new SelectionLayer();
     this.guidelinesLayer = new GuidelinesLayer();
     this.previewLayer = new PreviewLayer();

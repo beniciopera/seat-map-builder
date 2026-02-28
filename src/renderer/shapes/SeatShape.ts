@@ -1,8 +1,9 @@
 import Konva from 'konva';
 import type { Seat } from '@/src/domain/types';
 import { categoryColor, hexToRgba } from '@/src/utils/color';
+import { seatDisplayLabel } from '@/src/domain/labels';
 
-export function createSeatShape(seat: Seat): Konva.Group {
+export function createSeatShape(seat: Seat, displayLabelOverride?: string): Konva.Group {
   const group = new Konva.Group({
     x: seat.transform.position.x,
     y: seat.transform.position.y,
@@ -21,15 +22,19 @@ export function createSeatShape(seat: Seat): Konva.Group {
     name: 'seatCircle',
   });
 
+  const groupRotDeg = seat.transform.rotation * (180 / Math.PI);
+  const labelText = displayLabelOverride !== undefined
+    ? displayLabelOverride
+    : (seat.rowId ? seatDisplayLabel(seat.label) : seat.label);
   const label = new Konva.Text({
-    text: seat.label,
+    text: labelText,
     fontSize: 9,
     fill: categoryColor(seat.category),
     align: 'center',
     verticalAlign: 'middle',
+    rotation: -groupRotDeg,
     name: 'seatLabel',
   });
-  // Center the text
   label.offsetX(label.width() / 2);
   label.offsetY(label.height() / 2);
 
@@ -39,7 +44,7 @@ export function createSeatShape(seat: Seat): Konva.Group {
   return group;
 }
 
-export function updateSeatShape(group: Konva.Group, seat: Seat): void {
+export function updateSeatShape(group: Konva.Group, seat: Seat, displayLabelOverride?: string): void {
   group.x(seat.transform.position.x);
   group.y(seat.transform.position.y);
   group.rotation(seat.transform.rotation * (180 / Math.PI));
@@ -53,8 +58,12 @@ export function updateSeatShape(group: Konva.Group, seat: Seat): void {
 
   const label = group.findOne('.seatLabel') as Konva.Text;
   if (label) {
-    label.text(seat.label);
+    const labelText = displayLabelOverride !== undefined
+      ? displayLabelOverride
+      : (seat.rowId ? seatDisplayLabel(seat.label) : seat.label);
+    label.text(labelText);
     label.fill(categoryColor(seat.category));
+    label.rotation(-(seat.transform.rotation * (180 / Math.PI)));
     label.offsetX(label.width() / 2);
     label.offsetY(label.height() / 2);
   }
