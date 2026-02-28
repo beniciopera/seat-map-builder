@@ -7,7 +7,8 @@ import type { ElementLayer } from './ElementLayer';
 import { applySeatSelection, clearSeatSelection } from '../shapes/SeatShape';
 import { applyAreaSelection, clearAreaSelection } from '../shapes/AreaShape';
 import { applyTableSelection, clearTableSelection } from '../shapes/TableShape';
-import { distance, arcFromSagitta, angleBetween } from '@/src/utils/math';
+import { distance, angleBetween, parabolaY, parabolaTangentLocal } from '@/src/utils/math';
+import { CURVATURE_EPSILON } from '@/src/domain/constraints';
 
 export class SelectionLayer {
   readonly layer: Konva.Layer;
@@ -126,35 +127,58 @@ export class SelectionLayer {
 
       const chord = distance(firstPos, lastPos);
       const isEffectivelyStraight = !row.curveRadius
-        || Math.abs(row.curveRadius) <= 2
+        || Math.abs(row.curveRadius) <= CURVATURE_EPSILON
         || (chord > 0 && Math.abs(row.curveRadius) / chord < 0.02);
 
       if (!isEffectivelyStraight) {
-        // Curved shadow: draw arc band
-        const arc = arcFromSagitta(firstPos, lastPos, row.curveRadius);
-        const innerR = arc.radius - seatRadius - 5;
-        const outerR = arc.radius + seatRadius + 5;
+        // Curved shadow: draw parabola band as polygon
+        const sagitta = row.curveRadius;
+        const halfChord = chord / 2;
+        const angle = angleBetween(firstPos, lastPos);
+        const cosA = Math.cos(angle);
+        const sinA = Math.sin(angle);
+        const midX = (firstPos.x + lastPos.x) / 2;
+        const midY = (firstPos.y + lastPos.y) / 2;
+        const bandOffset = seatRadius + 5;
+        const numSamples = 40;
 
         const shadow = new Konva.Shape({
           sceneFunc: (context, shape) => {
             context.beginPath();
-            // Outer arc
-            if (arc.angleDiff > 0) {
-              context.arc(0, 0, outerR, arc.startAngle, arc.startAngle + arc.angleDiff, false);
-            } else {
-              context.arc(0, 0, outerR, arc.startAngle, arc.startAngle + arc.angleDiff, true);
+
+            // Outer edge (offset outward from curve)
+            for (let i = 0; i <= numSamples; i++) {
+              const lx = -halfChord + (chord * i) / numSamples;
+              const ly = parabolaY(lx, sagitta, chord);
+              const t = parabolaTangentLocal(lx, sagitta, chord);
+              // Normal = perpendicular to tangent, pointing outward (away from straight line)
+              const sign = sagitta > 0 ? 1 : -1;
+              const nx = -t.ty * sign;
+              const ny = t.tx * sign;
+              const wx = midX + (lx * cosA - (ly + bandOffset * sign) * sinA) + (-nx * sinA) * 0;
+              const wy = midY + (lx * sinA + (ly + bandOffset * sign) * cosA) + (ny * cosA) * 0;
+              // Simpler: just offset ly by bandOffset in the sagitta direction
+              const oLy = ly + bandOffset * sign;
+              const ox = midX + lx * cosA - oLy * sinA;
+              const oy = midY + lx * sinA + oLy * cosA;
+              if (i === 0) context.moveTo(ox, oy);
+              else context.lineTo(ox, oy);
             }
-            // Inner arc (reverse direction)
-            if (arc.angleDiff > 0) {
-              context.arc(0, 0, Math.max(0, innerR), arc.startAngle + arc.angleDiff, arc.startAngle, true);
-            } else {
-              context.arc(0, 0, Math.max(0, innerR), arc.startAngle + arc.angleDiff, arc.startAngle, false);
+
+            // Inner edge (offset inward, reverse direction)
+            for (let i = numSamples; i >= 0; i--) {
+              const lx = -halfChord + (chord * i) / numSamples;
+              const ly = parabolaY(lx, sagitta, chord);
+              const sign = sagitta > 0 ? 1 : -1;
+              const iLy = ly - bandOffset * sign;
+              const ix = midX + lx * cosA - iLy * sinA;
+              const iy = midY + lx * sinA + iLy * cosA;
+              context.lineTo(ix, iy);
             }
+
             context.closePath();
             context.fillStrokeShape(shape);
           },
-          x: arc.center.x,
-          y: arc.center.y,
           fill: 'rgba(66, 133, 244, 0.08)',
           listening: false,
         });
@@ -266,7 +290,7 @@ export class SelectionLayer {
 
       // Check if selection is a single row (straight or curved)
       let usedRotatedBox = false;
-      if (selectedRowIds.size === 1) {
+      if (selectedRowIds.size === 1 && !isSeatPicker) {
         const rowId = selectedRowIds.values().next().value as ElementId;
         const row = engine.state.get(rowId);
         if (row && isRow(row) && row.seatIds.length >= 2) {
@@ -376,25 +400,33 @@ export class SelectionLayer {
     let leftPos: Point;
     let rightPos: Point;
 
-    if (row.curveRadius && Math.abs(row.curveRadius) > 2 && row.seatIds.length >= 2) {
-      // Curved row: position handles along arc tangent at endpoints
-      const arc = arcFromSagitta(firstPos, lastPos, row.curveRadius);
-      const s = arc.angleDiff > 0 ? 1 : -1;
+    if (row.curveRadius && Math.abs(row.curveRadius) > CURVATURE_EPSILON && row.seatIds.length >= 2) {
+      // Curved row: position handles along parabola tangent at endpoints
+      const chord = distance(firstPos, lastPos);
+      const sagitta = row.curveRadius;
+      const halfChord = chord / 2;
+      const angle = angleBetween(firstPos, lastPos);
+      const cosA = Math.cos(angle);
+      const sinA = Math.sin(angle);
 
-      // Left (first seat): outward tangent = opposite of arc traversal direction
-      const leftDirX = s * Math.sin(arc.startAngle);
-      const leftDirY = s * -Math.cos(arc.startAngle);
+      // Left tangent at -chord/2
+      const tLeft = parabolaTangentLocal(-halfChord, sagitta, chord);
+      const leftDirX = -(tLeft.tx * cosA - tLeft.ty * sinA);
+      const leftDirY = -(tLeft.tx * sinA + tLeft.ty * cosA);
+      const leftLen = Math.sqrt(leftDirX * leftDirX + leftDirY * leftDirY);
       leftPos = {
-        x: firstPos.x + leftDirX * offset,
-        y: firstPos.y + leftDirY * offset,
+        x: firstPos.x + (leftDirX / leftLen) * offset,
+        y: firstPos.y + (leftDirY / leftLen) * offset,
       };
 
-      // Right (last seat): outward tangent = same as arc traversal direction
-      const rightDirX = s * -Math.sin(arc.endAngle);
-      const rightDirY = s * Math.cos(arc.endAngle);
+      // Right tangent at +chord/2
+      const tRight = parabolaTangentLocal(halfChord, sagitta, chord);
+      const rightDirX = tRight.tx * cosA - tRight.ty * sinA;
+      const rightDirY = tRight.tx * sinA + tRight.ty * cosA;
+      const rightLen = Math.sqrt(rightDirX * rightDirX + rightDirY * rightDirY);
       rightPos = {
-        x: lastPos.x + rightDirX * offset,
-        y: lastPos.y + rightDirY * offset,
+        x: lastPos.x + (rightDirX / rightLen) * offset,
+        y: lastPos.y + (rightDirY / rightLen) * offset,
       };
     } else {
       // Straight row: use orientationAngle
