@@ -7,7 +7,7 @@ import type { ElementLayer } from './ElementLayer';
 import { applySeatSelection, clearSeatSelection } from '../shapes/SeatShape';
 import { applyAreaSelection, clearAreaSelection } from '../shapes/AreaShape';
 import { applyTableSelection, clearTableSelection } from '../shapes/TableShape';
-import { distance, arcFromSagitta } from '@/src/utils/math';
+import { distance, arcFromSagitta, angleBetween } from '@/src/utils/math';
 
 export class SelectionLayer {
   readonly layer: Konva.Layer;
@@ -29,7 +29,6 @@ export class SelectionLayer {
 
   // Rotation handle
   private rotationHandle: Konva.Circle | null = null;
-  private rotationLine: Konva.Line | null = null;
   rotationHandlePosition: Point | null = null;
 
   // Resize handles (area corners)
@@ -123,7 +122,12 @@ export class SelectionLayer {
       const lastPos = lastSeat.transform.position;
       const seatRadius = firstSeat.radius;
 
-      if (row.curveRadius && Math.abs(row.curveRadius) > 2) {
+      const chord = distance(firstPos, lastPos);
+      const isEffectivelyStraight = !row.curveRadius
+        || Math.abs(row.curveRadius) <= 2
+        || (chord > 0 && Math.abs(row.curveRadius) / chord < 0.02);
+
+      if (!isEffectivelyStraight) {
         // Curved shadow: draw arc band
         const arc = arcFromSagitta(firstPos, lastPos, row.curveRadius);
         const innerR = arc.radius - seatRadius - 5;
@@ -162,7 +166,7 @@ export class SelectionLayer {
         const rowLen = distance(firstPos, lastPos);
         const shadowWidth = rowLen + 2 * seatRadius + 8;
         const shadowHeight = 2 * seatRadius + 10;
-        const angleDeg = row.orientationAngle * (180 / Math.PI);
+        const angleDeg = angleBetween(firstPos, lastPos) * (180 / Math.PI);
 
         const shadow = new Konva.Rect({
           x: midX,
@@ -260,28 +264,63 @@ export class SelectionLayer {
         this.layer.add(this.groupBoundingBox);
       }
 
-      // Check if selection is a single straight row
+      // Check if selection is a single row (straight or curved)
       let usedRotatedBox = false;
       if (selectedRowIds.size === 1) {
         const rowId = selectedRowIds.values().next().value as ElementId;
         const row = engine.state.get(rowId);
-        if (row && isRow(row) && row.seatIds.length >= 2 && (!row.curveRadius || Math.abs(row.curveRadius) <= 2)) {
-          const firstSeat = engine.state.get(row.seatIds[0]);
-          const lastSeat = engine.state.get(row.seatIds[row.seatIds.length - 1]);
-          if (firstSeat && lastSeat && isSeat(firstSeat) && isSeat(lastSeat)) {
-            const firstPos = firstSeat.transform.position;
-            const lastPos = lastSeat.transform.position;
-            const seatRadius = firstSeat.radius;
-            const midX = (firstPos.x + lastPos.x) / 2;
-            const midY = (firstPos.y + lastPos.y) / 2;
-            const rowLen = distance(firstPos, lastPos);
-            const padding = 6;
-            const boxWidth = rowLen + 2 * seatRadius + padding * 2;
-            const boxHeight = 2 * seatRadius + padding * 2;
-            const angleDeg = row.orientationAngle * (180 / Math.PI);
+        if (row && isRow(row) && row.seatIds.length >= 2) {
+          // Collect all seat positions and radius
+          const seatPositions: { x: number; y: number }[] = [];
+          let seatRadius = 0;
+          let allValid = true;
+          for (const seatId of row.seatIds) {
+            const seat = engine.state.get(seatId);
+            if (!seat || !isSeat(seat)) { allValid = false; break; }
+            seatPositions.push(seat.transform.position);
+            seatRadius = seat.radius;
+          }
+          if (allValid && seatPositions.length >= 2) {
+            const angle = row.orientationAngle;
+            const cosA = Math.cos(-angle);
+            const sinA = Math.sin(-angle);
 
-            this.groupBoundingBox.x(midX);
-            this.groupBoundingBox.y(midY);
+            // Compute centroid
+            let cx = 0, cy = 0;
+            for (const p of seatPositions) { cx += p.x; cy += p.y; }
+            cx /= seatPositions.length;
+            cy /= seatPositions.length;
+
+            // Rotate all seats into local frame and compute AABB
+            let minLx = Infinity, minLy = Infinity, maxLx = -Infinity, maxLy = -Infinity;
+            for (const p of seatPositions) {
+              const dx = p.x - cx;
+              const dy = p.y - cy;
+              const lx = dx * cosA - dy * sinA;
+              const ly = dx * sinA + dy * cosA;
+              minLx = Math.min(minLx, lx);
+              minLy = Math.min(minLy, ly);
+              maxLx = Math.max(maxLx, lx);
+              maxLy = Math.max(maxLy, ly);
+            }
+
+            const padding = 6;
+            const boxWidth = (maxLx - minLx) + 2 * seatRadius + padding * 2;
+            const boxHeight = (maxLy - minLy) + 2 * seatRadius + padding * 2;
+            const angleDeg = angle * (180 / Math.PI);
+
+            // Center of local AABB (relative to centroid)
+            const localCenterX = (minLx + maxLx) / 2;
+            const localCenterY = (minLy + maxLy) / 2;
+
+            // Rotate back to world space
+            const cosB = Math.cos(angle);
+            const sinB = Math.sin(angle);
+            const worldCenterX = cx + localCenterX * cosB - localCenterY * sinB;
+            const worldCenterY = cy + localCenterX * sinB + localCenterY * cosB;
+
+            this.groupBoundingBox.x(worldCenterX);
+            this.groupBoundingBox.y(worldCenterY);
             this.groupBoundingBox.width(boxWidth);
             this.groupBoundingBox.height(boxHeight);
             this.groupBoundingBox.offsetX(boxWidth / 2);
@@ -509,24 +548,12 @@ export class SelectionLayer {
     const cos = Math.cos(rotation);
     const sin = Math.sin(rotation);
 
-    // Top edge point (0, -halfHeight) rotated
-    const topX = centerX - (-halfHeight) * sin;
-    const topY = centerY + (-halfHeight) * cos;
-
     // Handle point (0, -(halfHeight + handleOffset)) rotated
     const fullOffset = -(halfHeight + handleOffset);
     const handleX = centerX - fullOffset * sin;
     const handleY = centerY + fullOffset * cos;
 
     this.rotationHandlePosition = { x: handleX, y: handleY };
-
-    // Line from top edge to handle
-    this.rotationLine = new Konva.Line({
-      points: [topX, topY, handleX, handleY],
-      stroke: 'rgba(76, 175, 80, 0.5)',
-      strokeWidth: 1,
-      listening: false,
-    });
 
     this.rotationHandle = new Konva.Circle({
       x: handleX,
@@ -544,7 +571,6 @@ export class SelectionLayer {
       document.body.style.cursor = 'default';
     });
 
-    this.layer.add(this.rotationLine);
     this.layer.add(this.rotationHandle);
   }
 
@@ -552,10 +578,6 @@ export class SelectionLayer {
     if (this.rotationHandle) {
       this.rotationHandle.destroy();
       this.rotationHandle = null;
-    }
-    if (this.rotationLine) {
-      this.rotationLine.destroy();
-      this.rotationLine = null;
     }
     this.rotationHandlePosition = null;
   }

@@ -1301,6 +1301,66 @@ export class SelectionTool extends BaseTool {
     const selectedIds = this.engine!.selection.getSelectedIds();
     if (selectedIds.length === 0) return false;
 
+    // Check if this is a single-row selection — use rotated OBB
+    const selectedRowIds = new Set<ElementId>();
+    for (const id of selectedIds) {
+      const el = this.engine!.state.get(id);
+      if (!el) continue;
+      if (isRow(el)) selectedRowIds.add(el.id);
+      else if (isSeat(el) && el.rowId) selectedRowIds.add(el.rowId);
+    }
+
+    if (selectedRowIds.size === 1) {
+      const rowId = selectedRowIds.values().next().value as ElementId;
+      const row = this.engine!.state.get(rowId);
+      if (row && isRow(row) && row.seatIds.length >= 2) {
+        const seatPositions: Point[] = [];
+        let seatRadius = 0;
+        let allValid = true;
+        for (const seatId of row.seatIds) {
+          const seat = this.engine!.state.get(seatId);
+          if (!seat || !isSeat(seat)) { allValid = false; break; }
+          seatPositions.push(seat.transform.position);
+          seatRadius = seat.radius;
+        }
+        if (allValid && seatPositions.length >= 2) {
+          const angle = row.orientationAngle;
+          const cosA = Math.cos(-angle);
+          const sinA = Math.sin(-angle);
+
+          // Compute centroid
+          let cx = 0, cy = 0;
+          for (const p of seatPositions) { cx += p.x; cy += p.y; }
+          cx /= seatPositions.length;
+          cy /= seatPositions.length;
+
+          // Compute local AABB
+          let minLx = Infinity, minLy = Infinity, maxLx = -Infinity, maxLy = -Infinity;
+          for (const p of seatPositions) {
+            const dx = p.x - cx;
+            const dy = p.y - cy;
+            const lx = dx * cosA - dy * sinA;
+            const ly = dx * sinA + dy * cosA;
+            minLx = Math.min(minLx, lx);
+            minLy = Math.min(minLy, ly);
+            maxLx = Math.max(maxLx, lx);
+            maxLy = Math.max(maxLy, ly);
+          }
+
+          // Transform test point into local frame
+          const pdx = point.x - cx;
+          const pdy = point.y - cy;
+          const plx = pdx * cosA - pdy * sinA;
+          const ply = pdx * sinA + pdy * cosA;
+
+          const padding = 6;
+          return plx >= minLx - seatRadius - padding && plx <= maxLx + seatRadius + padding &&
+                 ply >= minLy - seatRadius - padding && ply <= maxLy + seatRadius + padding;
+        }
+      }
+    }
+
+    // AABB fallback for non-row or multi-row selections
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     for (const id of selectedIds) {
       const el = this.engine!.state.get(id);
