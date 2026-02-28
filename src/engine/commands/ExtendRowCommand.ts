@@ -2,8 +2,8 @@ import type { Command } from './Command';
 import type { Seat, Row, ElementId } from '@/src/domain/types';
 import type { EditorEngine } from '../EditorEngine';
 import { propagateRowLabel } from '@/src/domain/labels';
-import { distance, parabolaPositions } from '@/src/utils/math';
-import { CURVATURE_EPSILON } from '@/src/domain/constraints';
+import { distance, parabolaPositions, angleBetween } from '@/src/utils/math';
+import { isRowCurvatureEffectivelyStraight } from '@/src/domain/constraints';
 import type { Point } from '@/src/domain/geometry';
 
 export class ExtendRowCommand implements Command {
@@ -52,7 +52,7 @@ export class ExtendRowCommand implements Command {
     // 4. Recalculate curveRadius (sagitta) for the new chord using quadratic scaling
     //    and reposition ALL seats onto the new parabola for consistency
     let newCurveRadius = row.curveRadius;
-    if (row.curveRadius && Math.abs(row.curveRadius) > CURVATURE_EPSILON && updatedSeatIds.length >= 2) {
+    if (row.curveRadius && updatedSeatIds.length >= 2) {
       const oldFirstSeat = this.engine.state.get(this.originalRow.seatIds[0]) as Seat | undefined;
       const oldLastSeat = this.engine.state.get(this.originalRow.seatIds[this.originalRow.seatIds.length - 1]) as Seat | undefined;
       if (oldFirstSeat && oldLastSeat) {
@@ -63,52 +63,69 @@ export class ExtendRowCommand implements Command {
           const newChord = distance(newFirst.transform.position, newLast.transform.position);
           const ratio = newChord / oldChord;
           newCurveRadius = row.curveRadius * ratio * ratio;
+          if (isRowCurvatureEffectivelyStraight(newCurveRadius, newChord)) newCurveRadius = 0;
 
-          // Reposition all seats onto the new parabola so shadow and seats are consistent
-          const newPositions = parabolaPositions(
-            newFirst.transform.position,
-            newLast.transform.position,
-            newCurveRadius,
-            updatedSeatIds.length,
-          );
-          for (let i = 0; i < updatedSeatIds.length; i++) {
-            const seat = this.engine.state.get(updatedSeatIds[i]) as Seat | undefined;
-            if (!seat) continue;
-            // Save original position for undo (only pre-existing seats)
-            if (!this.newSeats.some(ns => ns.id === seat.id)) {
-              this.originalSeatPositions.set(seat.id, { ...seat.transform.position });
+          // Reposition all seats onto the new parabola so shadow and seats are consistent (only when curved)
+          if (!isRowCurvatureEffectivelyStraight(newCurveRadius, newChord)) {
+            const newPositions = parabolaPositions(
+              newFirst.transform.position,
+              newLast.transform.position,
+              newCurveRadius,
+              updatedSeatIds.length,
+            );
+            for (let i = 0; i < updatedSeatIds.length; i++) {
+              const seat = this.engine.state.get(updatedSeatIds[i]) as Seat | undefined;
+              if (!seat) continue;
+              // Save original position for undo (only pre-existing seats)
+              if (!this.newSeats.some(ns => ns.id === seat.id)) {
+                this.originalSeatPositions.set(seat.id, { ...seat.transform.position });
+              }
+              const pos = newPositions[i];
+              const r = seat.radius;
+              const repositioned: Seat = {
+                ...seat,
+                transform: { ...seat.transform, position: pos },
+                bounds: { x: pos.x - r, y: pos.y - r, width: r * 2, height: r * 2 },
+              };
+              this.engine.state.set(seat.id, repositioned);
+              this.engine.spatialIndex.update(repositioned);
             }
-            const pos = newPositions[i];
-            const r = seat.radius;
-            const repositioned: Seat = {
-              ...seat,
-              transform: { ...seat.transform, position: pos },
-              bounds: { x: pos.x - r, y: pos.y - r, width: r * 2, height: r * 2 },
-            };
-            this.engine.state.set(seat.id, repositioned);
-            this.engine.spatialIndex.update(repositioned);
-          }
 
-          // Recompute bounds after repositioning
-          minX = Infinity; minY = Infinity; maxX = -Infinity; maxY = -Infinity;
-          for (const seatId of updatedSeatIds) {
-            const seat = this.engine.state.get(seatId) as Seat | undefined;
-            if (!seat) continue;
-            const pos = seat.transform.position;
-            const r = seat.radius;
-            minX = Math.min(minX, pos.x - r);
-            minY = Math.min(minY, pos.y - r);
-            maxX = Math.max(maxX, pos.x + r);
-            maxY = Math.max(maxY, pos.y + r);
+            // Recompute bounds after repositioning
+            minX = Infinity; minY = Infinity; maxX = -Infinity; maxY = -Infinity;
+            for (const seatId of updatedSeatIds) {
+              const seat = this.engine.state.get(seatId) as Seat | undefined;
+              if (!seat) continue;
+              const pos = seat.transform.position;
+              const r = seat.radius;
+              minX = Math.min(minX, pos.x - r);
+              minY = Math.min(minY, pos.y - r);
+              maxX = Math.max(maxX, pos.x + r);
+              maxY = Math.max(maxY, pos.y + r);
+            }
+            midX = (minX + maxX) / 2;
+            midY = (minY + maxY) / 2;
           }
-          midX = (minX + maxX) / 2;
-          midY = (minY + maxY) / 2;
         }
+      }
+    }
+
+    // Sync orientationAngle to actual first-to-last seat direction
+    let orientationAngle = row.orientationAngle;
+    if (updatedSeatIds.length >= 2) {
+      const firstSeat = this.engine.state.get(updatedSeatIds[0]) as Seat | undefined;
+      const lastSeat = this.engine.state.get(updatedSeatIds[updatedSeatIds.length - 1]) as Seat | undefined;
+      if (firstSeat && lastSeat) {
+        orientationAngle = angleBetween(
+          firstSeat.transform.position,
+          lastSeat.transform.position,
+        );
       }
     }
 
     const updatedRow: Row = {
       ...row,
+      orientationAngle,
       seatIds: updatedSeatIds,
       curveRadius: newCurveRadius,
       transform: {

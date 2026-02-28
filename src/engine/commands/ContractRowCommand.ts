@@ -2,8 +2,8 @@ import type { Command } from './Command';
 import type { Seat, Row, ElementId } from '@/src/domain/types';
 import type { EditorEngine } from '../EditorEngine';
 import { propagateRowLabel } from '@/src/domain/labels';
-import { distance, parabolaPositions } from '@/src/utils/math';
-import { CURVATURE_EPSILON } from '@/src/domain/constraints';
+import { distance, parabolaPositions, angleBetween } from '@/src/utils/math';
+import { isRowCurvatureEffectivelyStraight } from '@/src/domain/constraints';
 import type { Point } from '@/src/domain/geometry';
 
 export class ContractRowCommand implements Command {
@@ -29,7 +29,7 @@ export class ContractRowCommand implements Command {
 
     // 1. Compute new sagitta BEFORE removing seats (so all seats are still accessible)
     let newCurveRadius = row.curveRadius;
-    if (row.curveRadius && Math.abs(row.curveRadius) > CURVATURE_EPSILON && remainingSeatIds.length >= 2) {
+    if (row.curveRadius && remainingSeatIds.length >= 2) {
       const oldFirstSeat = this.engine.state.get(this.originalRow.seatIds[0]) as Seat | undefined;
       const oldLastSeat = this.engine.state.get(this.originalRow.seatIds[this.originalRow.seatIds.length - 1]) as Seat | undefined;
       if (oldFirstSeat && oldLastSeat) {
@@ -40,6 +40,7 @@ export class ContractRowCommand implements Command {
           const newChord = distance(newFirst.transform.position, newLast.transform.position);
           const ratio = newChord / oldChord;
           newCurveRadius = row.curveRadius * ratio * ratio;
+          if (isRowCurvatureEffectivelyStraight(newCurveRadius, newChord)) newCurveRadius = 0;
         }
       }
     }
@@ -48,10 +49,11 @@ export class ContractRowCommand implements Command {
     this.engine.removeElements(this.removedSeats.map(s => s.id));
 
     // 3. Reposition remaining seats onto the new parabola if curved
-    if (newCurveRadius && Math.abs(newCurveRadius) > CURVATURE_EPSILON && remainingSeatIds.length >= 2) {
-      const firstSeat = this.engine.state.get(remainingSeatIds[0]) as Seat | undefined;
-      const lastSeat = this.engine.state.get(remainingSeatIds[remainingSeatIds.length - 1]) as Seat | undefined;
-      if (firstSeat && lastSeat) {
+    const firstSeat = this.engine.state.get(remainingSeatIds[0]) as Seat | undefined;
+    const lastSeat = this.engine.state.get(remainingSeatIds[remainingSeatIds.length - 1]) as Seat | undefined;
+    if (remainingSeatIds.length >= 2 && firstSeat && lastSeat) {
+      const chord = distance(firstSeat.transform.position, lastSeat.transform.position);
+      if (!isRowCurvatureEffectivelyStraight(newCurveRadius, chord)) {
         const newPositions = parabolaPositions(
           firstSeat.transform.position,
           lastSeat.transform.position,
@@ -91,8 +93,22 @@ export class ContractRowCommand implements Command {
     const midX = (minX + maxX) / 2;
     const midY = (minY + maxY) / 2;
 
+    // Sync orientationAngle to actual first-to-last seat direction
+    let orientationAngle = row.orientationAngle;
+    if (remainingSeatIds.length >= 2) {
+      const firstSeat = this.engine.state.get(remainingSeatIds[0]) as Seat | undefined;
+      const lastSeat = this.engine.state.get(remainingSeatIds[remainingSeatIds.length - 1]) as Seat | undefined;
+      if (firstSeat && lastSeat) {
+        orientationAngle = angleBetween(
+          firstSeat.transform.position,
+          lastSeat.transform.position,
+        );
+      }
+    }
+
     const updatedRow: Row = {
       ...row,
+      orientationAngle,
       seatIds: remainingSeatIds,
       curveRadius: newCurveRadius,
       transform: {

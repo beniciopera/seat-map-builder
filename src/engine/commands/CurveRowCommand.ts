@@ -2,6 +2,7 @@ import type { Command } from './Command';
 import type { ElementId, Row, Seat, MapElement } from '@/src/domain/types';
 import type { Point } from '@/src/domain/geometry';
 import type { EditorEngine } from '../EditorEngine';
+import { angleBetween } from '@/src/utils/math';
 
 export class CurveRowCommand implements Command {
   readonly name = 'Curve Row';
@@ -76,8 +77,22 @@ export class CurveRowCommand implements Command {
       maxY = Math.max(maxY, p.y + r);
     }
 
+    // Sync orientationAngle to actual first-to-last seat direction
+    let orientationAngle = row.orientationAngle;
+    if (row.seatIds.length >= 2) {
+      const firstSeat = this.engine.state.get(row.seatIds[0]) as Seat | undefined;
+      const lastSeat = this.engine.state.get(row.seatIds[row.seatIds.length - 1]) as Seat | undefined;
+      if (firstSeat && lastSeat) {
+        orientationAngle = angleBetween(
+          firstSeat.transform.position,
+          lastSeat.transform.position,
+        );
+      }
+    }
+
     const updatedRow: Row = {
       ...row,
+      orientationAngle,
       curveRadius,
       transform: {
         ...row.transform,
@@ -90,6 +105,7 @@ export class CurveRowCommand implements Command {
         height: maxY - minY || 1,
       },
     };
+
     this.engine.state.set(this.rowId, updatedRow);
     this.engine.spatialIndex.update(updatedRow);
     updated.push(updatedRow);
