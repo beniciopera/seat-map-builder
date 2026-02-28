@@ -6,7 +6,7 @@ import { createRowShape, updateRowShape } from '../shapes/RowShape';
 import type { RowLabelInfo } from '../shapes/RowShape';
 import { createAreaShape, updateAreaShape } from '../shapes/AreaShape';
 import { createTableShape, updateTableShape } from '../shapes/TableShape';
-import { seatNumberFromLabel, seatDisplayLabel } from '@/src/domain/labels';
+import { seatDisplayLabel } from '@/src/domain/labels';
 
 export class ElementLayer {
   readonly layer: Konva.Layer;
@@ -38,40 +38,30 @@ export class ElementLayer {
   private buildRowLabelInfo(row: Row): RowLabelInfo | undefined {
     if (!this.elementGetter || row.seatIds.length === 0) return undefined;
 
-    // Collect seats with their parsed numeric labels
-    const seats: { seat: Seat; num: number }[] = [];
+    // Collect all seats with valid positions
+    const seats: Seat[] = [];
     for (const sid of row.seatIds) {
       const s = this.elementGetter(sid) as Seat | undefined;
-      if (!s || s.type !== 'seat') continue;
-      const num = seatNumberFromLabel(s.label);
-      if (num !== null) seats.push({ seat: s, num });
+      if (s?.type === 'seat') seats.push(s);
     }
 
-    if (seats.length === 0) {
-      // Fallback when no parseable seat numbers: use first/last by array index based on direction
-      const direction = row.seatOrderDirection ?? 'left-to-right';
-      const index = direction === 'right-to-left' ? row.seatIds.length - 1 : 0;
-      const fallback = this.elementGetter(row.seatIds[index]) as Seat | undefined;
-      if (!fallback || fallback.type !== 'seat') return undefined;
-      return { firstSeatPos: fallback.transform.position, lastSeatPos: null, seatRadius: fallback.radius };
-    }
+    if (seats.length === 0) return undefined;
 
-    let minEntry = seats[0];
-    let maxEntry = seats[0];
-    for (const entry of seats) {
-      if (entry.num < minEntry.num) minEntry = entry;
-      if (entry.num > maxEntry.num) maxEntry = entry;
+    // Always place label at the leftmost seat (smallest x, then smallest y for ties)
+    let leftmost = seats[0];
+    let rightmost = seats[0];
+    for (const s of seats) {
+      const lp = leftmost.transform.position;
+      const rp = rightmost.transform.position;
+      const sp = s.transform.position;
+      if (sp.x < lp.x || (sp.x === lp.x && sp.y < lp.y)) leftmost = s;
+      if (sp.x > rp.x || (sp.x === rp.x && sp.y > rp.y)) rightmost = s;
     }
-
-    // left-to-right: label next to min number; right-to-left: label next to max number
-    const direction = row.seatOrderDirection ?? 'left-to-right';
-    const labelSeat = direction === 'right-to-left' ? maxEntry : minEntry;
-    const farSeat = direction === 'right-to-left' ? minEntry : maxEntry;
 
     return {
-      firstSeatPos: labelSeat.seat.transform.position,
-      lastSeatPos: seats.length >= 2 ? farSeat.seat.transform.position : null,
-      seatRadius: labelSeat.seat.radius,
+      firstSeatPos: leftmost.transform.position,
+      lastSeatPos: seats.length >= 2 ? rightmost.transform.position : null,
+      seatRadius: leftmost.radius,
     };
   }
 
