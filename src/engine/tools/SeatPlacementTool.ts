@@ -10,7 +10,7 @@ export class SeatPlacementTool extends BaseTool {
 
   private anchorPoint: Point | null = null;
   private previewPositions: Point[] = [];
-  private spacing = 40;
+  private spacing = 35;
 
   onPointerDown(event: EditorInputEvent): void {
     if (!this.engine || event.button !== 0) return;

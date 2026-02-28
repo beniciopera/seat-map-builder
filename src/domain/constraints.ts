@@ -1,11 +1,11 @@
 import type { Seat, Row } from './types';
 
-export const MIN_SEAT_SPACING = 18;
+export const MIN_SEAT_SPACING = 10;
 export const MAX_SEATS_PER_ROW = 100;
 export const MIN_SEAT_RADIUS = 5;
 export const MAX_SEAT_RADIUS = 30;
-export const DEFAULT_SEAT_RADIUS = 8;
-export const DEFAULT_SEAT_SPACING = 18;
+export const DEFAULT_SEAT_RADIUS = 12;
+export const DEFAULT_SEAT_SPACING = 14;
 export const DEFAULT_TABLE_RADIUS = 32;
 export const DEFAULT_TABLE_SEAT_GAP = 4;
 

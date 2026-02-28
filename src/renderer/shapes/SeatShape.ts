@@ -23,7 +23,7 @@ export function createSeatShape(seat: Seat): Konva.Group {
 
   const label = new Konva.Text({
     text: seat.label,
-    fontSize: 7,
+    fontSize: 9,
     fill: categoryColor(seat.category),
     align: 'center',
     verticalAlign: 'middle',

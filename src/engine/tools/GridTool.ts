@@ -23,7 +23,7 @@ export class GridTool extends BaseTool {
   private rowAngle = 0;
   private seatCount = 0;
   private firstRowPositions: Point[] = [];
-  private spacing = 40;
+  private spacing = 35;
   private rowSpacing = 40;
 
   onPointerDown(event: EditorInputEvent): void {
