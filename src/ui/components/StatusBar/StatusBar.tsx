@@ -7,8 +7,6 @@ export function StatusBar() {
   const counts = useEditorStore((s) => s.elementCounts);
   const toolState = useEditorStore((s) => s.toolState);
   const activeToolId = useEditorStore((s) => s.activeToolId);
-  const mouseX = useEditorStore((s) => s.mouseWorldX);
-  const mouseY = useEditorStore((s) => s.mouseWorldY);
 
   return (
     <Box
@@ -24,9 +22,6 @@ export function StatusBar() {
       }}
     >
       <Box sx={{ display: 'flex', gap: 3 }}>
-        <Typography variant="caption" color="text.secondary" sx={{ fontVariantNumeric: 'tabular-nums' }}>
-          X: {Math.round(mouseX)} Y: {Math.round(mouseY)}
-        </Typography>
         <Typography variant="caption" color="text.secondary">
           {activeToolId} ({toolState})
         </Typography>
