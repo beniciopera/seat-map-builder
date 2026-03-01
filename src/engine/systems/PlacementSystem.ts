@@ -55,8 +55,9 @@ export class PlacementSystem {
       }
     } else {
       for (let i = 0; i < seats.length; i++) {
-        this.standaloneSeatCounter++;
-        (seats[i] as { label: string }).label = `S-${this.standaloneSeatCounter}`;
+        const { label: sLabel, counter } = this.engine.nextAvailableStandaloneSeatLabel(1);
+        this.standaloneSeatCounter = counter;
+        (seats[i] as { label: string }).label = sLabel;
       }
     }
 

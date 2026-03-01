@@ -83,7 +83,8 @@ export class TableTool extends BaseTool {
 
     this.engine.events.emit('preview:clear', {} as Record<string, never>);
 
-    const tableLabel = `T${++this.tableCounter}`;
+    const { label: tableLabel, counter } = this.engine.nextAvailableTableLabel(1);
+    this.tableCounter = counter;
     const seatRadius = DEFAULT_SEAT_RADIUS;
     const seatDistFromCenter = this.tableRadius + seatRadius + DEFAULT_TABLE_SEAT_GAP;
 

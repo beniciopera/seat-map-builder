@@ -24,7 +24,8 @@ export class RowGroupingSystem {
       ? distance(seatPositions[0], seatPositions[1])
       : 40;
 
-    const label = rowLabelFromIndex(this.rowCounter++);
+    const { label, index } = this.engine.nextAvailableRowLabel(0);
+    this.rowCounter = index + 1;
 
     // Compute bounding rect for the row
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
