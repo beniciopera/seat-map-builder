@@ -5,6 +5,7 @@ import { generateElementId } from '@/src/domain/ids';
 import { DEFAULT_TRANSFORM } from '@/src/domain/geometry';
 import { DEFAULT_SEAT_RADIUS, DEFAULT_TABLE_SEAT_GAP } from '@/src/domain/constraints';
 import { propagateRowLabel } from '@/src/domain/labels';
+import { DEFAULT_CATEGORY_ID } from '@/src/domain/categories';
 
 export class ChangeTableSeatCountCommand implements Command {
   readonly name = 'Change Table Seat Count';
@@ -57,7 +58,7 @@ export class ChangeTableSeatCountCommand implements Command {
           rowId: null,
           tableId: this.tableId,
           status: 'available',
-          category: table.category || 'planta1',
+          category: table.category || DEFAULT_CATEGORY_ID,
           radius: seatRadius,
           locked: false,
           visible: true,

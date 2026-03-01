@@ -124,6 +124,14 @@ export function bridgeEngineToStore(engine: EditorEngine): () => void {
   unsubscribers.push(engine.events.on('elements:removed', updateCounts));
   unsubscribers.push(engine.events.on('layout:loaded', updateCounts));
 
+  unsubscribers.push(
+    engine.events.on('categories:changed', () => {
+      useEditorStore.getState().setCategories(engine.getCategories());
+    }),
+  );
+
+  useEditorStore.getState().setCategories(engine.getCategories());
+
   // Refresh selected element data when properties change
   unsubscribers.push(
     engine.events.on('elements:updated', ({ elements }) => {

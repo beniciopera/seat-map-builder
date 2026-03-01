@@ -1,4 +1,5 @@
 import type { Point, Rect, Transform } from './geometry';
+import type { CategoryId } from './categories';
 
 export type ElementId = string & { readonly __brand: unique symbol };
 
@@ -15,8 +16,6 @@ export interface BaseElement {
 
 export type SeatStatus = 'available' | 'reserved' | 'blocked' | 'sold';
 
-export type SeatCategory = 'planta1' | 'planta2' | 'vip';
-
 export interface Seat extends BaseElement {
   readonly type: 'seat';
   readonly label: string;
@@ -24,13 +23,11 @@ export interface Seat extends BaseElement {
   readonly tableId: ElementId | null;
   /** Only present for seats in a row or table; individual (standalone) seats have no status. */
   readonly status?: SeatStatus;
-  readonly category: SeatCategory;
+  readonly category: CategoryId;
   readonly radius: number;
 }
 
 export type SeatOrderDirection = 'left-to-right' | 'right-to-left';
-
-export type RowCategory = 'planta1' | 'planta2' | 'vip';
 
 export interface CurveDefinition {
   readonly chord: number;   // chord length that defines the parabola shape
@@ -48,7 +45,7 @@ export interface Row extends BaseElement {
   readonly areaId: ElementId | null;
   readonly curveRadius: number; // 0 = straight, non-zero = sagitta (parabolic curve displacement)
   readonly curveDefinition: CurveDefinition | null;
-  readonly category: RowCategory;
+  readonly category: CategoryId;
 }
 
 export interface Area extends BaseElement {
@@ -64,7 +61,7 @@ export interface Table extends BaseElement {
   readonly seatCount: number;
   readonly seatIds: readonly ElementId[];
   readonly tableRadius: number;
-  readonly category: SeatCategory;
+  readonly category: CategoryId;
 }
 
 export type MapElement = Seat | Row | Area | Table;

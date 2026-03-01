@@ -22,6 +22,7 @@ import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { Toolbar } from './components/Toolbar/Toolbar';
 import { CanvasHost } from './components/Canvas/CanvasHost';
 import { PropertiesPanel } from './components/Panels/PropertiesPanel';
+import { CategoryManager } from './components/Panels/CategoryManager';
 import { StatusBar } from './components/StatusBar/StatusBar';
 import { ConfirmDeleteDialog } from './components/Dialogs/ConfirmDeleteDialog';
 import { EditorEngine } from '@/src/engine/EditorEngine';
@@ -50,7 +51,8 @@ function EditorInner({ engine }: { engine: EditorEngine }) {
 
   const handleExport = useCallback(() => {
     const layout = engine.getLayout();
-    const json = serializeLayout(layout);
+    const categories = engine.state.getAllCategories();
+    const json = serializeLayout(layout, categories);
     const blob = new Blob([json], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -70,8 +72,8 @@ function EditorInner({ engine }: { engine: EditorEngine }) {
     const reader = new FileReader();
     reader.onload = () => {
       try {
-        const layout = deserializeLayout(reader.result as string);
-        engine.loadLayout(layout);
+        const { layout, categories } = deserializeLayout(reader.result as string);
+        engine.loadLayout(layout, categories);
       } catch (err) {
         alert(err instanceof Error ? err.message : 'Invalid JSON format');
       }
@@ -148,7 +150,10 @@ function EditorInner({ engine }: { engine: EditorEngine }) {
         </Box>
         <Box sx={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
           <CanvasHost />
-          <PropertiesPanel />
+          <Box sx={{ display: 'flex', flexDirection: 'column', width: 260, minWidth: 260, flexShrink: 0, borderLeft: '1px solid #e0e0e0', overflow: 'hidden' }}>
+            <CategoryManager />
+            <PropertiesPanel />
+          </Box>
         </Box>
         <StatusBar />
         <input

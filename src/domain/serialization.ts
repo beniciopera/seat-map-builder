@@ -1,6 +1,8 @@
 import type { MapLayout, MapElement, ElementId } from './types';
+import type { Category } from './categories';
+import { DEFAULT_CATEGORIES } from './categories';
 
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
 
 export interface SerializedLayout {
   schemaVersion: number;
@@ -11,9 +13,10 @@ export interface SerializedLayout {
   elements: MapElement[];
   createdAt: number;
   updatedAt: number;
+  categories?: Category[];
 }
 
-export function serializeLayout(layout: MapLayout): string {
+export function serializeLayout(layout: MapLayout, categories?: Category[]): string {
   const data: SerializedLayout = {
     schemaVersion: SCHEMA_VERSION,
     id: layout.id,
@@ -24,18 +27,27 @@ export function serializeLayout(layout: MapLayout): string {
     createdAt: layout.createdAt,
     updatedAt: layout.updatedAt,
   };
+  if (categories !== undefined && categories.length > 0) {
+    data.categories = categories;
+  }
   return JSON.stringify(data, null, 2);
 }
 
-export function deserializeLayout(json: string): MapLayout {
+export interface DeserializedLayout {
+  layout: MapLayout;
+  categories: Category[];
+}
+
+export function deserializeLayout(json: string): DeserializedLayout {
   const data = JSON.parse(json) as SerializedLayout;
 
   if (typeof data !== 'object' || data === null) {
     throw new Error('Invalid JSON: expected an object');
   }
 
-  if (data.schemaVersion !== undefined && data.schemaVersion !== SCHEMA_VERSION) {
-    throw new Error(`Unsupported schema version: ${data.schemaVersion}`);
+  const version = data.schemaVersion ?? 1;
+  if (version !== 1 && version !== 2) {
+    throw new Error(`Unsupported schema version: ${version}`);
   }
 
   if (!Array.isArray(data.elements)) {
@@ -54,7 +66,7 @@ export function deserializeLayout(json: string): MapLayout {
     elements.set(el.id as ElementId, el as MapElement);
   }
 
-  return {
+  const layout: MapLayout = {
     id: data.id,
     name: data.name,
     width: data.width,
@@ -63,4 +75,24 @@ export function deserializeLayout(json: string): MapLayout {
     createdAt: data.createdAt ?? Date.now(),
     updatedAt: data.updatedAt ?? Date.now(),
   };
+
+  let categories: Category[];
+  if (version === 2 && Array.isArray(data.categories) && data.categories.length > 0) {
+    const byId = new Map(DEFAULT_CATEGORIES.map((c) => [c.id, c]));
+    for (const cat of data.categories) {
+      if (cat?.id && cat?.name != null && cat?.color != null) {
+        byId.set(cat.id, {
+          id: cat.id,
+          name: cat.name,
+          color: cat.color,
+          isDefault: cat.isDefault ?? DEFAULT_CATEGORIES.some((d) => d.id === cat.id),
+        });
+      }
+    }
+    categories = Array.from(byId.values());
+  } else {
+    categories = [...DEFAULT_CATEGORIES];
+  }
+
+  return { layout, categories };
 }

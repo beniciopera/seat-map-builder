@@ -24,6 +24,7 @@ export interface EditorEventMap {
   'boxselect:end': Record<string, never>;
   'delete:confirm': { elementIds: ElementId[] };
   'layout:loaded': Record<string, never>;
+  'categories:changed': Record<string, never>;
 }
 
 type Handler<T> = (payload: T) => void;

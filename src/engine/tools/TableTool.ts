@@ -5,6 +5,7 @@ import type { Table, Seat } from '@/src/domain/types';
 import { generateElementId } from '@/src/domain/ids';
 import { DEFAULT_TRANSFORM } from '@/src/domain/geometry';
 import { DEFAULT_SEAT_RADIUS, DEFAULT_TABLE_RADIUS, DEFAULT_TABLE_SEAT_GAP, DEFAULT_SEATS_PER_TABLE } from '@/src/domain/constraints';
+import { DEFAULT_CATEGORY_ID } from '@/src/domain/categories';
 import { CreateTableCommand } from '../commands/CreateTableCommand';
 
 export class TableTool extends BaseTool {
@@ -108,7 +109,7 @@ export class TableTool extends BaseTool {
         rowId: null,
         tableId,
         status: 'available',
-        category: 'planta1',
+        category: DEFAULT_CATEGORY_ID,
         radius: seatRadius,
         locked: false,
         visible: true,
@@ -129,7 +130,7 @@ export class TableTool extends BaseTool {
       seatCount: this.seatCount,
       seatIds,
       tableRadius: this.tableRadius,
-      category: 'planta1',
+      category: DEFAULT_CATEGORY_ID,
       locked: false,
       visible: true,
       transform: { ...DEFAULT_TRANSFORM, position: pos },

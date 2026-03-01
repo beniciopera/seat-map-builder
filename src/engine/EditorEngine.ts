@@ -1,4 +1,5 @@
 import type { MapLayout, MapElement, ElementId, Seat, Table, Row } from '@/src/domain/types';
+import type { Category, CategoryId } from '@/src/domain/categories';
 import type { Point, Rect } from '@/src/domain/geometry';
 import { rowLabelFromIndex } from '@/src/domain/labels';
 import { EditorEventEmitter } from './events';
@@ -15,6 +16,7 @@ import { TransformSystem } from './systems/TransformSystem';
 import { SeatGenerationSystem } from './systems/SeatGenerationSystem';
 import { RowGroupingSystem } from './systems/RowGroupingSystem';
 import { PlacementSystem } from './systems/PlacementSystem';
+import { DEFAULT_CATEGORIES } from '@/src/domain/categories';
 
 export class EditorEngine {
   readonly events: EditorEventEmitter;
@@ -58,6 +60,38 @@ export class EditorEngine {
 
   getLayout(): MapLayout {
     return this.state.getLayout();
+  }
+
+  getCategories(): Category[] {
+    return this.state.getAllCategories();
+  }
+
+  getCategory(id: CategoryId): Category | undefined {
+    return this.state.getCategory(id);
+  }
+
+  getCategoryColor(id: CategoryId): string {
+    const cat = this.state.getCategory(id);
+    return cat?.color ?? '#9E9E9E';
+  }
+
+  isCategoryInUse(id: CategoryId): boolean {
+    for (const el of this.state.getAll()) {
+      if (el.type === 'seat' && (el as Seat).category === id) return true;
+      if (el.type === 'row' && (el as Row).category === id) return true;
+      if (el.type === 'table' && (el as Table).category === id) return true;
+    }
+    return false;
+  }
+
+  isCategoryNameTaken(name: string, excludeId?: CategoryId): boolean {
+    const trimmed = name.trim().toLowerCase();
+    if (!trimmed) return false;
+    for (const cat of this.state.getAllCategories()) {
+      if (cat.id === excludeId) continue;
+      if (cat.name.trim().toLowerCase() === trimmed) return true;
+    }
+    return false;
   }
 
   addElements(elements: MapElement[]): void {
@@ -258,21 +292,27 @@ export class EditorEngine {
     this.selection.clearSelection();
     this.spatialIndex.clear();
     this.state.clear();
+    this.state.setCategoriesFromArray(DEFAULT_CATEGORIES);
     this.history.clear();
     if (allIds.length > 0) {
       this.events.emit('elements:removed', { elementIds: allIds });
     }
     this.events.emit('selection:changed', { selectedIds: [] });
+    this.events.emit('categories:changed', {});
     this.events.emit('layout:loaded', {});
   }
 
-  loadLayout(layout: MapLayout): void {
+  loadLayout(layout: MapLayout, categories?: Category[]): void {
     this.selection.clearSelection();
     this.spatialIndex.clear();
     this.state.setLayout(layout);
+    if (categories !== undefined && categories.length > 0) {
+      this.state.setCategoriesFromArray(categories);
+    }
     this.spatialIndex.rebuild(this.state.getAll());
     this.history.clear();
     this.events.emit('selection:changed', { selectedIds: [] });
+    this.events.emit('categories:changed', {});
     this.events.emit('layout:loaded', {});
   }
 

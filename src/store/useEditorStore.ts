@@ -1,5 +1,7 @@
 import { create } from 'zustand';
 import type { ElementId, ElementType, MapElement } from '@/src/domain/types';
+import type { Category } from '@/src/domain/categories';
+import { DEFAULT_CATEGORIES } from '@/src/domain/categories';
 import { DARK_DEFAULT_CURSOR } from '@/src/utils/cursors';
 
 export interface SelectedElementData {
@@ -32,6 +34,7 @@ export interface EditorStoreState {
   selectedElementData: SelectedElementData | null;
   mouseWorldX: number;
   mouseWorldY: number;
+  categories: Category[];
 
   setActiveToolId: (id: string) => void;
   setToolState: (state: string) => void;
@@ -44,6 +47,7 @@ export interface EditorStoreState {
   setElementCounts: (counts: ElementCounts) => void;
   setSelectedElementData: (data: SelectedElementData | null) => void;
   setMouseWorld: (x: number, y: number) => void;
+  setCategories: (categories: Category[]) => void;
 }
 
 export const useEditorStore = create<EditorStoreState>((set) => ({
@@ -61,6 +65,7 @@ export const useEditorStore = create<EditorStoreState>((set) => ({
   selectedElementData: null,
   mouseWorldX: 0,
   mouseWorldY: 0,
+  categories: DEFAULT_CATEGORIES,
 
   setActiveToolId: (id) => set({ activeToolId: id }),
   setToolState: (state) => set({ toolState: state }),
@@ -73,4 +78,5 @@ export const useEditorStore = create<EditorStoreState>((set) => ({
   setElementCounts: (counts) => set({ elementCounts: counts }),
   setSelectedElementData: (data) => set({ selectedElementData: data }),
   setMouseWorld: (x, y) => set({ mouseWorldX: x, mouseWorldY: y }),
+  setCategories: (categories) => set({ categories }),
 }));

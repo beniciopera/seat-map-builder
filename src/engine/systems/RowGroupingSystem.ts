@@ -5,6 +5,7 @@ import { generateElementId } from '@/src/domain/ids';
 import { rowLabelFromIndex, propagateRowLabel, seatNumberFromLabel } from '@/src/domain/labels';
 import { angleBetween, distance } from '@/src/utils/math';
 import { DEFAULT_TRANSFORM } from '@/src/domain/geometry';
+import { DEFAULT_CATEGORY_ID } from '@/src/domain/categories';
 
 export class RowGroupingSystem {
   private engine: EditorEngine;
@@ -52,7 +53,7 @@ export class RowGroupingSystem {
       seatOrderDirection: 'left-to-right',
       curveRadius: 0,
       curveDefinition: null,
-      category: 'planta1',
+      category: DEFAULT_CATEGORY_ID,
       areaId: null,
       locked: false,
       visible: true,

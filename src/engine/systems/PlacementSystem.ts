@@ -4,6 +4,7 @@ import type { EditorEngine } from '../EditorEngine';
 import { generateElementId } from '@/src/domain/ids';
 import { DEFAULT_SEAT_RADIUS, DEFAULT_SEAT_SPACING } from '@/src/domain/constraints';
 import { DEFAULT_TRANSFORM } from '@/src/domain/geometry';
+import { DEFAULT_CATEGORY_ID } from '@/src/domain/categories';
 import { PlaceSeatsCommand } from '../commands/PlaceSeatsCommand';
 import { PlaceGridCommand } from '../commands/PlaceGridCommand';
 
@@ -25,7 +26,7 @@ export class PlacementSystem {
       label: '',
       rowId: null,
       tableId: null,
-      category: 'planta1' as const,
+      category: DEFAULT_CATEGORY_ID,
       radius,
       locked: false,
       visible: true,
@@ -85,7 +86,7 @@ export class PlacementSystem {
         label: '',
         rowId: null,
         tableId: null,
-        category: 'planta1' as const,
+        category: DEFAULT_CATEGORY_ID,
         radius,
         locked: false,
         visible: true,

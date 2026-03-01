@@ -2,7 +2,9 @@
 import { Box, Typography, TextField, Select, MenuItem, FormControl, InputLabel } from '@mui/material';
 import { useEditorStore } from '@/src/store/useEditorStore';
 import { useEngine } from '@/src/ui/hooks/useEngine';
-import type { Seat, Row, Area, Table, SeatCategory, SeatOrderDirection, ElementId } from '@/src/domain/types';
+import type { Seat, Row, Area, Table, SeatOrderDirection, ElementId } from '@/src/domain/types';
+import type { Category } from '@/src/domain/categories';
+import { DEFAULT_CATEGORY_ID } from '@/src/domain/categories';
 import { UpdatePropertiesCommand } from '@/src/engine/commands/UpdatePropertiesCommand';
 import { ChangeCategoryCommand } from '@/src/engine/commands/ChangeCategoryCommand';
 import { ChangeTableSeatCountCommand } from '@/src/engine/commands/ChangeTableSeatCountCommand';
@@ -11,33 +13,28 @@ import { categoryColor } from '@/src/utils/color';
 import { MIN_SEATS_PER_TABLE, MAX_SEATS_PER_TABLE } from '@/src/domain/constraints';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
-const CATEGORY_OPTIONS: { value: SeatCategory; label: string }[] = [
-  { value: 'planta1', label: 'Planta 1' },
-  { value: 'planta2', label: 'Planta 2' },
-  { value: 'vip', label: 'VIP' },
-];
-
-function renderCategoryMenuItems() {
-  return CATEGORY_OPTIONS.map((opt) => (
-    <MenuItem key={opt.value} value={opt.value}>
+function renderCategoryMenuItems(categories: Category[]) {
+  return categories.map((cat) => (
+    <MenuItem key={cat.id} value={cat.id}>
       <Box
         sx={{
           width: 12,
           height: 12,
           borderRadius: '50%',
-          bgcolor: categoryColor(opt.value),
+          bgcolor: categoryColor(cat.id),
           display: 'inline-block',
           mr: 1,
           verticalAlign: 'middle',
         }}
       />
-      {opt.label}
+      {cat.name}
     </MenuItem>
   ));
 }
 
 export function PropertiesPanel() {
   const engine = useEngine();
+  const categories = useEditorStore((s) => s.categories);
   const selectedElementData = useEditorStore((s) => s.selectedElementData);
   const selectionCount = useEditorStore((s) => s.selectionCount);
   const selectedIds = useEditorStore((s) => s.selectedIds);
@@ -69,31 +66,31 @@ export function PropertiesPanel() {
         // Skip seats whose parent table or row is also in the selection
         if (seat.tableId && tableIds.has(seat.tableId)) continue;
         if (seat.rowId && rowIds.has(seat.rowId)) continue;
-        categories.add(seat.category || 'planta1');
+        categories.add(seat.category || DEFAULT_CATEGORY_ID);
       } else if (el!.type === 'row') {
         const row = el as unknown as Row;
         if (row.seatIds.length === 0) {
-          categories.add(row.category || 'planta1');
+          categories.add(row.category || DEFAULT_CATEGORY_ID);
         } else {
           for (const seatId of row.seatIds) {
             const seat = engine.getElement(seatId);
-            if (seat && seat.type === 'seat') categories.add((seat as Seat).category || 'planta1');
+            if (seat && seat.type === 'seat') categories.add((seat as Seat).category || DEFAULT_CATEGORY_ID);
           }
         }
       } else if (el!.type === 'table') {
         const table = el as unknown as Table;
         if (table.seatIds.length === 0) {
-          categories.add(table.category || 'planta1');
+          categories.add(table.category || DEFAULT_CATEGORY_ID);
         } else {
           for (const seatId of table.seatIds) {
             const seat = engine.getElement(seatId);
-            if (seat && seat.type === 'seat') categories.add((seat as Seat).category || 'planta1');
+            if (seat && seat.type === 'seat') categories.add((seat as Seat).category || DEFAULT_CATEGORY_ID);
           }
         }
       }
     }
     const commonCategory = categories.size === 1 ? [...categories][0] : '';
-    const uniqueCategories = [...categories] as SeatCategory[];
+    const uniqueCategories = [...categories];
 
     // Detect if all top-level selected elements are tables
     const topLevelElements = elements.filter((el) => {
@@ -124,7 +121,7 @@ export function PropertiesPanel() {
         const cmd = new ChangeCategoryCommand(
           engine,
           selectedIds as ElementId[],
-          newCategory as SeatCategory,
+          newCategory,
         );
         engine.history.execute(cmd);
         setBulkVersion((v) => v + 1);
@@ -143,18 +140,18 @@ export function PropertiesPanel() {
               displayEmpty
               renderValue={(value) => {
                 if (value) {
-                  const opt = CATEGORY_OPTIONS.find((o) => o.value === value);
+                  const cat = categories.find((c) => c.id === value);
                   return (
                     <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                      <Box sx={{ width: 12, height: 12, borderRadius: '50%', bgcolor: categoryColor(value as SeatCategory), mr: 1 }} />
-                      {opt?.label}
+                      <Box sx={{ width: 12, height: 12, borderRadius: '50%', bgcolor: categoryColor(value), mr: 1 }} />
+                      {cat?.name}
                     </Box>
                   );
                 }
                 return (
                   <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                    {multiSelectInfo.uniqueCategories.map((cat) => (
-                      <Box key={cat} sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: categoryColor(cat), mr: 0.5 }} />
+                    {multiSelectInfo.uniqueCategories.map((catId) => (
+                      <Box key={catId} sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: categoryColor(catId), mr: 0.5 }} />
                     ))}
                     <Typography variant="body2" sx={{ ml: 0.5, color: 'text.secondary' }}>
                       Mixed Categories
@@ -164,7 +161,7 @@ export function PropertiesPanel() {
               }}
               onChange={(e) => handleBulkCategoryChange(e.target.value)}
             >
-              {renderCategoryMenuItems()}
+              {renderCategoryMenuItems(categories)}
             </Select>
           </FormControl>
           {multiSelectInfo.allTables && (
@@ -210,28 +207,28 @@ export function PropertiesPanel() {
       </Typography>
 
       {selectedElementData.type === 'seat' && (
-        <SeatProperties data={selectedElementData as unknown as Seat} onChange={handleChange} isSeatPicker={activeToolId === 'seat-picker'} />
+        <SeatProperties data={selectedElementData as unknown as Seat} onChange={handleChange} isSeatPicker={activeToolId === 'seat-picker'} categories={categories} />
       )}
       {selectedElementData.type === 'row' && (
-        <RowProperties data={selectedElementData as unknown as Row} onChange={handleChange} engine={engine} />
+        <RowProperties data={selectedElementData as unknown as Row} onChange={handleChange} engine={engine} categories={categories} />
       )}
       {selectedElementData.type === 'area' && (
         <AreaProperties data={selectedElementData as unknown as Area} onChange={handleChange} engine={engine} />
       )}
       {selectedElementData.type === 'table' && (
-        <TableProperties data={selectedElementData as unknown as Table} onChange={handleChange} engine={engine} />
+        <TableProperties data={selectedElementData as unknown as Table} onChange={handleChange} engine={engine} categories={categories} />
       )}
     </Box>
   );
 }
 
-function SeatProperties({ data, onChange, isSeatPicker }: { data: Seat; onChange: (field: string, value: unknown) => void; isSeatPicker?: boolean }) {
+function SeatProperties({ data, onChange, isSeatPicker, categories }: { data: Seat; onChange: (field: string, value: unknown) => void; isSeatPicker?: boolean; categories: Category[] }) {
   return (
     <>
       <FormControl fullWidth sx={{ mb: 2 }}>
         <InputLabel>Category</InputLabel>
-        <Select value={data.category || 'planta1'} label="Category" onChange={(e) => onChange('category', e.target.value)}>
-          {renderCategoryMenuItems()}
+        <Select value={data.category || DEFAULT_CATEGORY_ID} label="Category" onChange={(e) => onChange('category', e.target.value)}>
+          {renderCategoryMenuItems(categories)}
         </Select>
       </FormControl>
       {!isSeatPicker && (data.rowId != null || data.tableId != null) && (
@@ -253,10 +250,12 @@ function RowProperties({
   data,
   onChange,
   engine,
+  categories,
 }: {
   data: Row;
   onChange: (field: string, value: unknown, elementId?: ElementId) => void;
   engine: ReturnType<typeof useEngine>;
+  categories: Category[];
 }) {
   const [localLabel, setLocalLabel] = useState(data.label || '');
   const inputRef = useRef<HTMLInputElement>(null);
@@ -298,7 +297,7 @@ function RowProperties({
     const cmd = new ChangeCategoryCommand(
       engine,
       [data.id],
-      newCategory as SeatCategory,
+      newCategory,
     );
     engine.history.execute(cmd);
   };
@@ -306,16 +305,16 @@ function RowProperties({
   // Derive category from contained seats so "Mixed" shows when seats have different categories
   const categoryFromSeats = useMemo(() => {
     if (!data.seatIds.length) {
-      const single = data.category || 'planta1';
-      return { commonCategory: single, uniqueCategories: [single] as SeatCategory[] };
+      const single = data.category || DEFAULT_CATEGORY_ID;
+      return { commonCategory: single, uniqueCategories: [single] };
     }
-    const categories = new Set<string>();
+    const categoryIds = new Set<string>();
     for (const seatId of data.seatIds) {
       const seat = engine.getElement(seatId);
-      if (seat && seat.type === 'seat') categories.add((seat as Seat).category || 'planta1');
+      if (seat && seat.type === 'seat') categoryIds.add((seat as Seat).category || DEFAULT_CATEGORY_ID);
     }
-    const uniqueCategories = [...categories] as SeatCategory[];
-    const commonCategory = categories.size === 1 ? uniqueCategories[0] : '';
+    const uniqueCategories = [...categoryIds];
+    const commonCategory = categoryIds.size === 1 ? uniqueCategories[0] : '';
     return { commonCategory, uniqueCategories };
   }, [data.id, data.seatIds, data.category, engine]);
 
@@ -362,18 +361,18 @@ function RowProperties({
           displayEmpty
           renderValue={(value) => {
             if (value) {
-              const opt = CATEGORY_OPTIONS.find((o) => o.value === value);
+              const cat = categories.find((c) => c.id === value);
               return (
                 <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                  <Box sx={{ width: 12, height: 12, borderRadius: '50%', bgcolor: categoryColor(value as SeatCategory), mr: 1 }} />
-                  {opt?.label}
+                  <Box sx={{ width: 12, height: 12, borderRadius: '50%', bgcolor: categoryColor(value), mr: 1 }} />
+                  {cat?.name}
                 </Box>
               );
             }
             return (
               <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                {categoryFromSeats.uniqueCategories.map((cat) => (
-                  <Box key={cat} sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: categoryColor(cat), mr: 0.5 }} />
+                {categoryFromSeats.uniqueCategories.map((catId) => (
+                  <Box key={catId} sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: categoryColor(catId), mr: 0.5 }} />
                 ))}
                 <Typography variant="body2" sx={{ ml: 0.5, color: 'text.secondary' }}>
                   Mixed
@@ -383,7 +382,7 @@ function RowProperties({
           }}
           onChange={(e) => handleCategoryChange(e.target.value)}
         >
-          {renderCategoryMenuItems()}
+          {renderCategoryMenuItems(categories)}
         </Select>
       </FormControl>
     </>
@@ -574,10 +573,12 @@ function TableProperties({
   data,
   onChange,
   engine,
+  categories,
 }: {
   data: Table;
   onChange: (field: string, value: unknown) => void;
   engine: ReturnType<typeof useEngine>;
+  categories: Category[];
 }) {
   const [localLabel, setLocalLabel] = useState(data.label || '');
   const [localSeatCount, setLocalSeatCount] = useState(String(data.seatCount || 0));
@@ -627,7 +628,7 @@ function TableProperties({
     const cmd = new ChangeCategoryCommand(
       engine,
       [data.id],
-      newCategory as SeatCategory,
+      newCategory,
     );
     engine.history.execute(cmd);
   };
@@ -635,16 +636,16 @@ function TableProperties({
   // Derive category from contained seats so "Mixed" shows when seats have different categories
   const categoryFromSeats = useMemo(() => {
     if (!data.seatIds?.length) {
-      const single = data.category || 'planta1';
-      return { commonCategory: single, uniqueCategories: [single] as SeatCategory[] };
+      const single = data.category || DEFAULT_CATEGORY_ID;
+      return { commonCategory: single, uniqueCategories: [single] };
     }
-    const categories = new Set<string>();
+    const categoryIds = new Set<string>();
     for (const seatId of data.seatIds) {
       const seat = engine.getElement(seatId);
-      if (seat && seat.type === 'seat') categories.add((seat as Seat).category || 'planta1');
+      if (seat && seat.type === 'seat') categoryIds.add((seat as Seat).category || DEFAULT_CATEGORY_ID);
     }
-    const uniqueCategories = [...categories] as SeatCategory[];
-    const commonCategory = categories.size === 1 ? uniqueCategories[0] : '';
+    const uniqueCategories = [...categoryIds];
+    const commonCategory = categoryIds.size === 1 ? uniqueCategories[0] : '';
     return { commonCategory, uniqueCategories };
   }, [data.id, data.seatIds, data.category, engine]);
 
@@ -686,18 +687,18 @@ function TableProperties({
           displayEmpty
           renderValue={(value) => {
             if (value) {
-              const opt = CATEGORY_OPTIONS.find((o) => o.value === value);
+              const cat = categories.find((c) => c.id === value);
               return (
                 <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                  <Box sx={{ width: 12, height: 12, borderRadius: '50%', bgcolor: categoryColor(value as SeatCategory), mr: 1 }} />
-                  {opt?.label}
+                  <Box sx={{ width: 12, height: 12, borderRadius: '50%', bgcolor: categoryColor(value), mr: 1 }} />
+                  {cat?.name}
                 </Box>
               );
             }
             return (
               <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                {categoryFromSeats.uniqueCategories.map((cat) => (
-                  <Box key={cat} sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: categoryColor(cat), mr: 0.5 }} />
+                {categoryFromSeats.uniqueCategories.map((catId) => (
+                  <Box key={catId} sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: categoryColor(catId), mr: 0.5 }} />
                 ))}
                 <Typography variant="body2" sx={{ ml: 0.5, color: 'text.secondary' }}>
                   Mixed
@@ -707,7 +708,7 @@ function TableProperties({
           }}
           onChange={(e) => handleCategoryChange(e.target.value)}
         >
-          {renderCategoryMenuItems()}
+          {renderCategoryMenuItems(categories)}
         </Select>
       </FormControl>
       <TextField

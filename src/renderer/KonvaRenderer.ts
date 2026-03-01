@@ -6,6 +6,7 @@ import { SelectionLayer } from './layers/SelectionLayer';
 import { GuidelinesLayer } from './layers/GuidelinesLayer';
 import { PreviewLayer } from './layers/PreviewLayer';
 import { ViewportController } from './viewport/ViewportController';
+import { setCategoryRegistry } from '@/src/utils/color';
 
 export class KonvaRenderer {
   private stage: Konva.Stage | null = null;
@@ -57,6 +58,9 @@ export class KonvaRenderer {
     // Initial sync
     this.elementLayer.syncWithEngine(this.engine);
     this.camera.applyTransform();
+
+    // Sync category registry for color resolution
+    setCategoryRegistry(this.engine.state.getCategoriesMap());
   }
 
   detach(): void {
@@ -229,6 +233,22 @@ export class KonvaRenderer {
         const toolId = this.engine.tools.getActiveTool()?.id ?? 'selection';
         this.selectionLayer.updateSelection([], this.engine, this.elementLayer, 'idle', toolId);
         this.camera.applyTransform();
+      }),
+    );
+
+    this.unsubscribers.push(
+      this.engine.events.on('categories:changed', () => {
+        setCategoryRegistry(this.engine.state.getCategoriesMap());
+        this.elementLayer.syncWithEngine(this.engine);
+        const toolId = this.engine.tools.getActiveTool()?.id ?? 'selection';
+        const toolState = this.engine.tools.getActiveTool()?.currentState ?? 'idle';
+        this.selectionLayer.updateSelection(
+          this.engine.selection.getSelectedIds(),
+          this.engine,
+          this.elementLayer,
+          toolState,
+          toolId,
+        );
       }),
     );
   }

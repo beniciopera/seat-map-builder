@@ -1,10 +1,12 @@
 import type { Command } from './Command';
-import type { ElementId, MapElement, SeatCategory, Seat, Row, Table } from '@/src/domain/types';
+import type { ElementId, MapElement, Seat, Row, Table } from '@/src/domain/types';
+import type { CategoryId } from '@/src/domain/categories';
 import type { EditorEngine } from '../EditorEngine';
+import { DEFAULT_CATEGORY_ID } from '@/src/domain/categories';
 
 interface ElementSnapshot {
   id: ElementId;
-  category: SeatCategory;
+  category: CategoryId;
 }
 
 export class ChangeCategoryCommand implements Command {
@@ -16,7 +18,7 @@ export class ChangeCategoryCommand implements Command {
   constructor(
     engine: EditorEngine,
     targetIds: ElementId[],
-    newCategory: SeatCategory,
+    newCategory: CategoryId,
   ) {
     this.engine = engine;
 
@@ -45,8 +47,8 @@ export class ChangeCategoryCommand implements Command {
       const el = engine.state.get(id);
       if (!el) continue;
 
-      const oldCategory = (el as Seat | Row | Table).category || 'planta1';
-      this.oldSnapshots.push({ id, category: oldCategory as SeatCategory });
+      const oldCategory = (el as Seat | Row | Table).category || DEFAULT_CATEGORY_ID;
+      this.oldSnapshots.push({ id, category: oldCategory });
       this.newSnapshots.push({ id, category: newCategory });
     }
   }
