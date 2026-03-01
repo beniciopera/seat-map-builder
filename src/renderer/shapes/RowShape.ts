@@ -2,7 +2,7 @@ import Konva from 'konva';
 import type { Row } from '@/src/domain/types';
 import type { Point } from '@/src/domain/geometry';
 import { isRowCurvatureEffectivelyStraight } from '@/src/domain/constraints';
-import { distance, angleBetween, parabolaTangentLocal } from '@/src/utils/math';
+import { distance, angleBetween, parabolaTangentLocal, curveDefinitionFromEndpoints, worldToParabolaLocalX } from '@/src/utils/math';
 
 export interface RowLabelInfo {
   firstSeatPos: Point;
@@ -27,17 +27,17 @@ function computeLabelPosition(
   if (!lastSeatPos || row.seatIds.length < 2) {
     tangentAngle = row.orientationAngle;
   } else {
-    const chord = distance(firstSeatPos, lastSeatPos);
-    const chordAngle = angleBetween(firstSeatPos, lastSeatPos);
     const sagitta = row.curveRadius;
+    const def = row.curveDefinition ?? curveDefinitionFromEndpoints(firstSeatPos, lastSeatPos);
 
-    if (isRowCurvatureEffectivelyStraight(sagitta, chord) || chord < 1e-6) {
-      tangentAngle = chordAngle;
+    if (isRowCurvatureEffectivelyStraight(sagitta, def.chord) || def.chord < 1e-6) {
+      tangentAngle = angleBetween(firstSeatPos, lastSeatPos);
     } else {
-      const halfChord = chord / 2;
-      const t = parabolaTangentLocal(-halfChord, sagitta, chord);
-      const worldTx = t.tx * Math.cos(chordAngle) - t.ty * Math.sin(chordAngle);
-      const worldTy = t.tx * Math.sin(chordAngle) + t.ty * Math.cos(chordAngle);
+      // Use actual local x of first seat on the parabola
+      const localXFirst = worldToParabolaLocalX(firstSeatPos, def);
+      const t = parabolaTangentLocal(localXFirst, sagitta, def.chord);
+      const worldTx = t.tx * Math.cos(def.angle) - t.ty * Math.sin(def.angle);
+      const worldTy = t.tx * Math.sin(def.angle) + t.ty * Math.cos(def.angle);
       tangentAngle = Math.atan2(worldTy, worldTx);
     }
   }

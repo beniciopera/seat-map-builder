@@ -7,7 +7,8 @@ import type { ElementLayer } from './ElementLayer';
 import { applySeatSelection, clearSeatSelection } from '../shapes/SeatShape';
 import { applyAreaSelection, clearAreaSelection } from '../shapes/AreaShape';
 import { applyTableSelection, clearTableSelection } from '../shapes/TableShape';
-import { distance, angleBetween, parabolaY, parabolaTangentLocal } from '@/src/utils/math';
+import { distance, angleBetween, parabolaY, parabolaTangentLocal, curveDefinitionFromEndpoints, worldToParabolaLocalX } from '@/src/utils/math';
+import { darkCursor } from '@/src/utils/cursors';
 import { isRowCurvatureEffectivelyStraight } from '@/src/domain/constraints';
 
 export class SelectionLayer {
@@ -125,20 +126,27 @@ export class SelectionLayer {
       const lastPos = lastSeat.transform.position;
       const seatRadius = firstSeat.radius;
 
-      const chord = distance(firstPos, lastPos);
-      const isEffectivelyStraight = isRowCurvatureEffectivelyStraight(row.curveRadius ?? 0, chord);
+      // Use curveDefinition for center/angle/chord (supports asymmetric curves)
+      const def = row.curveDefinition ?? curveDefinitionFromEndpoints(firstPos, lastPos);
+      const isEffectivelyStraight = isRowCurvatureEffectivelyStraight(row.curveRadius ?? 0, def.chord);
 
       if (!isEffectivelyStraight) {
         // Curved shadow: draw parabola band as polygon
         const sagitta = row.curveRadius;
-        const halfChord = chord / 2;
-        const angle = angleBetween(firstPos, lastPos);
-        const cosA = Math.cos(angle);
-        const sinA = Math.sin(angle);
-        const midX = (firstPos.x + lastPos.x) / 2;
-        const midY = (firstPos.y + lastPos.y) / 2;
+        const defChord = def.chord;
+        const cosA = Math.cos(def.angle);
+        const sinA = Math.sin(def.angle);
+        const midX = def.center.x;
+        const midY = def.center.y;
         const bandOffset = seatRadius + 5;
         const numSamples = 40;
+
+        // Compute actual local x range from first/last seat positions
+        const localXFirst = worldToParabolaLocalX(firstPos, def);
+        const localXLast = worldToParabolaLocalX(lastPos, def);
+        const xMin = Math.min(localXFirst, localXLast);
+        const xMax = Math.max(localXFirst, localXLast);
+        const xRange = xMax - xMin;
 
         const shadow = new Konva.Shape({
           sceneFunc: (context, shape) => {
@@ -146,16 +154,9 @@ export class SelectionLayer {
 
             // Outer edge (offset outward from curve)
             for (let i = 0; i <= numSamples; i++) {
-              const lx = -halfChord + (chord * i) / numSamples;
-              const ly = parabolaY(lx, sagitta, chord);
-              const t = parabolaTangentLocal(lx, sagitta, chord);
-              // Normal = perpendicular to tangent, pointing outward (away from straight line)
+              const lx = xMin + (xRange * i) / numSamples;
+              const ly = parabolaY(lx, sagitta, defChord);
               const sign = sagitta > 0 ? 1 : -1;
-              const nx = -t.ty * sign;
-              const ny = t.tx * sign;
-              const wx = midX + (lx * cosA - (ly + bandOffset * sign) * sinA) + (-nx * sinA) * 0;
-              const wy = midY + (lx * sinA + (ly + bandOffset * sign) * cosA) + (ny * cosA) * 0;
-              // Simpler: just offset ly by bandOffset in the sagitta direction
               const oLy = ly + bandOffset * sign;
               const ox = midX + lx * cosA - oLy * sinA;
               const oy = midY + lx * sinA + oLy * cosA;
@@ -165,8 +166,8 @@ export class SelectionLayer {
 
             // Inner edge (offset inward, reverse direction)
             for (let i = numSamples; i >= 0; i--) {
-              const lx = -halfChord + (chord * i) / numSamples;
-              const ly = parabolaY(lx, sagitta, chord);
+              const lx = xMin + (xRange * i) / numSamples;
+              const ly = parabolaY(lx, sagitta, defChord);
               const sign = sagitta > 0 ? 1 : -1;
               const iLy = ly - bandOffset * sign;
               const ix = midX + lx * cosA - iLy * sinA;
@@ -400,17 +401,19 @@ export class SelectionLayer {
     let leftPos: Point;
     let rightPos: Point;
 
-    const chord = distance(firstPos, lastPos);
-    if (row.seatIds.length >= 2 && !isRowCurvatureEffectivelyStraight(row.curveRadius ?? 0, chord)) {
-      // Curved row: position handles along parabola tangent at endpoints
+    const def = row.curveDefinition ?? curveDefinitionFromEndpoints(firstPos, lastPos);
+    if (row.seatIds.length >= 2 && !isRowCurvatureEffectivelyStraight(row.curveRadius ?? 0, def.chord)) {
+      // Curved row: position handles along parabola tangent at actual seat positions
       const sagitta = row.curveRadius ?? 0;
-      const halfChord = chord / 2;
-      const angle = angleBetween(firstPos, lastPos);
-      const cosA = Math.cos(angle);
-      const sinA = Math.sin(angle);
+      const cosA = Math.cos(def.angle);
+      const sinA = Math.sin(def.angle);
 
-      // Left tangent at -chord/2
-      const tLeft = parabolaTangentLocal(-halfChord, sagitta, chord);
+      // Compute actual local x of first and last seats
+      const localXFirst = worldToParabolaLocalX(firstPos, def);
+      const localXLast = worldToParabolaLocalX(lastPos, def);
+
+      // Left tangent at first seat's actual local x
+      const tLeft = parabolaTangentLocal(localXFirst, sagitta, def.chord);
       const leftDirX = -(tLeft.tx * cosA - tLeft.ty * sinA);
       const leftDirY = -(tLeft.tx * sinA + tLeft.ty * cosA);
       const leftLen = Math.sqrt(leftDirX * leftDirX + leftDirY * leftDirY);
@@ -419,8 +422,8 @@ export class SelectionLayer {
         y: firstPos.y + (leftDirY / leftLen) * offset,
       };
 
-      // Right tangent at +chord/2
-      const tRight = parabolaTangentLocal(halfChord, sagitta, chord);
+      // Right tangent at last seat's actual local x
+      const tRight = parabolaTangentLocal(localXLast, sagitta, def.chord);
       const rightDirX = tRight.tx * cosA - tRight.ty * sinA;
       const rightDirY = tRight.tx * sinA + tRight.ty * cosA;
       const rightLen = Math.sqrt(rightDirX * rightDirX + rightDirY * rightDirY);
@@ -455,10 +458,10 @@ export class SelectionLayer {
       listening: true,
     });
     this.leftHandle.on('mouseenter', () => {
-      document.body.style.cursor = 'pointer';
+      document.body.style.cursor = darkCursor('pointer');
     });
     this.leftHandle.on('mouseleave', () => {
-      document.body.style.cursor = 'default';
+      document.body.style.cursor = darkCursor('default');
     });
 
     this.rightHandle = new Konva.Circle({
@@ -471,10 +474,10 @@ export class SelectionLayer {
       listening: true,
     });
     this.rightHandle.on('mouseenter', () => {
-      document.body.style.cursor = 'pointer';
+      document.body.style.cursor = darkCursor('pointer');
     });
     this.rightHandle.on('mouseleave', () => {
-      document.body.style.cursor = 'default';
+      document.body.style.cursor = darkCursor('default');
     });
 
     this.layer.add(this.leftHandle);
@@ -511,19 +514,20 @@ export class SelectionLayer {
 
     const firstPos = firstSeat.transform.position;
     const lastPos = lastSeat.transform.position;
-    const midX = (firstPos.x + lastPos.x) / 2;
-    const midY = (firstPos.y + lastPos.y) / 2;
 
-    // Perpendicular direction (90 degrees from row orientation)
-    const angle = row.orientationAngle;
-    const perpX = -Math.sin(angle);
-    const perpY = Math.cos(angle);
+    // Use curveDefinition for center/angle (supports asymmetric curves)
+    const def = row.curveDefinition ?? curveDefinitionFromEndpoints(firstPos, lastPos);
+    const midX = def.center.x;
+    const midY = def.center.y;
+
+    // Perpendicular direction (90 degrees from parabola chord angle)
+    const perpX = -Math.sin(def.angle);
+    const perpY = Math.cos(def.angle);
 
     // Offset by current curve amount (use curveRadius as visual offset)
     const curveOffset = row.curveRadius || 0;
     // Clamp handle position to match curve limits
-    const chord = distance(firstPos, lastPos);
-    const maxSagitta = (chord / 2) * 0.75;
+    const maxSagitta = (def.chord / 2) * 0.75;
     const clampedOffset = Math.max(-maxSagitta, Math.min(maxSagitta, curveOffset));
     const handlePos: Point = {
       x: midX + perpX * clampedOffset,
@@ -547,10 +551,10 @@ export class SelectionLayer {
       listening: true,
     });
     this.curveHandle.on('mouseenter', () => {
-      document.body.style.cursor = 'grab';
+      document.body.style.cursor = darkCursor('grab');
     });
     this.curveHandle.on('mouseleave', () => {
-      document.body.style.cursor = 'default';
+      document.body.style.cursor = darkCursor('default');
     });
 
     this.layer.add(this.curveHandle);
@@ -597,10 +601,10 @@ export class SelectionLayer {
       listening: true,
     });
     this.rotationHandle.on('mouseenter', () => {
-      document.body.style.cursor = 'crosshair';
+      document.body.style.cursor = darkCursor('crosshair');
     });
     this.rotationHandle.on('mouseleave', () => {
-      document.body.style.cursor = 'default';
+      document.body.style.cursor = darkCursor('default');
     });
 
     this.layer.add(this.rotationHandle);
@@ -660,10 +664,10 @@ export class SelectionLayer {
       handle.setAttr('corner', c.corner);
       const cursorStyle = c.cursor;
       handle.on('mouseenter', () => {
-        document.body.style.cursor = cursorStyle;
+        document.body.style.cursor = darkCursor(cursorStyle);
       });
       handle.on('mouseleave', () => {
-        document.body.style.cursor = 'default';
+        document.body.style.cursor = darkCursor('default');
       });
       this.layer.add(handle);
       this.resizeHandles.push(handle);

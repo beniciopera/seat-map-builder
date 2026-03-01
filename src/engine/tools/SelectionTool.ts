@@ -1,7 +1,7 @@
 import { BaseTool } from './Tool';
 import type { EditorInputEvent } from '../input/InputEvent';
 import type { Point, Rect } from '@/src/domain/geometry';
-import type { ElementId, MapElement, Row, Seat, Table, Area } from '@/src/domain/types';
+import type { ElementId, MapElement, Row, Seat, Table, Area, CurveDefinition } from '@/src/domain/types';
 import { isSeat, isRow, isArea, isTable } from '@/src/domain/types';
 import { MoveElementsCommand } from '../commands/MoveElementsCommand';
 import { DeleteElementsCommand } from '../commands/DeleteElementsCommand';
@@ -10,7 +10,7 @@ import { ContractRowCommand } from '../commands/ContractRowCommand';
 import { CurveRowCommand } from '../commands/CurveRowCommand';
 import { RotateElementsCommand } from '../commands/RotateElementsCommand';
 import { ResizeElementCommand } from '../commands/ResizeElementCommand';
-import { distance, angleBetween, parabolaPositions, parabolaTangentLocal, parabolaArcLength, parabolaXAtArcLength, parabolaY, radToDeg, degToRad, snapAngleDeg } from '@/src/utils/math';
+import { distance, angleBetween, parabolaPositions, parabolaTangentLocal, parabolaArcLength, parabolaXAtArcLength, parabolaY, radToDeg, degToRad, snapAngleDeg, curveDefinitionFromEndpoints, worldToParabolaLocalX } from '@/src/utils/math';
 import { generateElementId } from '@/src/domain/ids';
 import { DEFAULT_SEAT_RADIUS, isRowCurvatureEffectivelyStraight } from '@/src/domain/constraints';
 import type { SnapTarget, AngleSnapTarget } from '../systems/SnapEngine';
@@ -24,6 +24,7 @@ export class SelectionTool extends BaseTool {
   private dragStartWorld: Point | null = null;
   private dragStartScreen: Point | null = null;
   private dragOriginalPositions = new Map<ElementId, Point>();
+  private dragOriginalCurveDefinitions = new Map<ElementId, CurveDefinition | null>();
   private boxSelectStart: Point | null = null;
   private boxSelectCurrent: Point | null = null;
 
@@ -136,11 +137,15 @@ export class SelectionTool extends BaseTool {
       this.dragStartWorld = event.worldPoint;
       this.dragStartScreen = event.screenPoint;
       this.dragOriginalPositions.clear();
+      this.dragOriginalCurveDefinitions.clear();
 
       for (const id of this.engine.selection.getSelectedIds()) {
         const el = this.engine.state.get(id);
         if (el) {
           this.dragOriginalPositions.set(id, el.transform.position);
+          if (isRow(el) && el.curveDefinition) {
+            this.dragOriginalCurveDefinitions.set(id, el.curveDefinition);
+          }
         }
       }
 
@@ -153,9 +158,15 @@ export class SelectionTool extends BaseTool {
       this.dragStartWorld = event.worldPoint;
       this.dragStartScreen = event.screenPoint;
       this.dragOriginalPositions.clear();
+      this.dragOriginalCurveDefinitions.clear();
       for (const id of this.engine.selection.getSelectedIds()) {
         const el = this.engine.state.get(id);
-        if (el) this.dragOriginalPositions.set(id, el.transform.position);
+        if (el) {
+          this.dragOriginalPositions.set(id, el.transform.position);
+          if (isRow(el) && el.curveDefinition) {
+            this.dragOriginalCurveDefinitions.set(id, el.curveDefinition);
+          }
+        }
       }
       this.engine.snap.setExcluded(this.engine.selection.getSelectedIds());
       this.transition('dragging');
@@ -271,11 +282,25 @@ export class SelectionTool extends BaseTool {
           const el = this.engine.state.get(id);
           if (!el) continue;
           const newPos = { x: origPos.x + delta.x, y: origPos.y + delta.y };
-          const merged = {
+          let merged = {
             ...el,
             transform: { ...el.transform, position: newPos },
             bounds: { ...el.bounds, x: newPos.x - el.bounds.width / 2, y: newPos.y - el.bounds.height / 2 },
           } as MapElement;
+          // Translate curveDefinition.center during live preview so shadow follows
+          const origCurveDef = this.dragOriginalCurveDefinitions.get(id);
+          if (isRow(merged) && origCurveDef) {
+            merged = {
+              ...merged,
+              curveDefinition: {
+                ...origCurveDef,
+                center: {
+                  x: origCurveDef.center.x + delta.x,
+                  y: origCurveDef.center.y + delta.y,
+                },
+              },
+            } as MapElement;
+          }
           this.engine.state.set(id, merged);
           this.engine.spatialIndex.update(merged);
           updated.push(merged);
@@ -443,9 +468,15 @@ export class SelectionTool extends BaseTool {
         if (tangents) {
           const dir = this.extendingHandle === 'right' ? tangents.rightDir : tangents.leftDir;
           projection = dragDelta.x * dir.x + dragDelta.y * dir.y;
-          // Arc length per seat along parabola
-          const halfChord = tangents.chord / 2;
-          effectiveSpacing = parabolaArcLength(-halfChord, halfChord, tangents.sagitta, tangents.chord) / (row.seatIds.length - 1);
+          // Arc length per seat along parabola using curveDefinition chord
+          const firstSeatForSpacing = this.engine.state.get(row.seatIds[0]) as Seat | undefined;
+          const lastSeatForSpacing = this.engine.state.get(row.seatIds[row.seatIds.length - 1]) as Seat | undefined;
+          if (firstSeatForSpacing && lastSeatForSpacing) {
+            const def = row.curveDefinition ?? curveDefinitionFromEndpoints(firstSeatForSpacing.transform.position, lastSeatForSpacing.transform.position);
+            const localXFirst = worldToParabolaLocalX(firstSeatForSpacing.transform.position, def);
+            const localXLast = worldToParabolaLocalX(lastSeatForSpacing.transform.position, def);
+            effectiveSpacing = parabolaArcLength(localXFirst, localXLast, tangents.sagitta, tangents.chord) / (row.seatIds.length - 1);
+          }
         } else {
           const angle = row.orientationAngle;
           const dirX = Math.cos(angle);
@@ -466,26 +497,23 @@ export class SelectionTool extends BaseTool {
           const previewPositions: Point[] = [];
 
           if (tangents) {
-            // Place new seats along parabola continuation
+            // Place new seats along parabola continuation using curveDefinition
             const firstSeat = this.engine.state.get(row.seatIds[0]) as Seat | undefined;
             const lastSeat = this.engine.state.get(row.seatIds[row.seatIds.length - 1]) as Seat | undefined;
             if (!firstSeat || !lastSeat) break;
-            const firstPos = firstSeat.transform.position;
-            const lastPos = lastSeat.transform.position;
-            const chord = tangents.chord;
+            const def = row.curveDefinition ?? curveDefinitionFromEndpoints(firstSeat.transform.position, lastSeat.transform.position);
+            const chord = def.chord;
             const sagitta = tangents.sagitta;
-            const halfChord = chord / 2;
-            const angle = angleBetween(firstPos, lastPos);
-            const cosA = Math.cos(angle);
-            const sinA = Math.sin(angle);
-            const midX = (firstPos.x + lastPos.x) / 2;
-            const midY = (firstPos.y + lastPos.y) / 2;
+            const cosA = Math.cos(def.angle);
+            const sinA = Math.sin(def.angle);
+            const midX = def.center.x;
+            const midY = def.center.y;
 
+            const anchorLocalX = worldToParabolaLocalX(anchorSeat.transform.position, def);
             const direction: 1 | -1 = this.extendingHandle === 'right' ? 1 : -1;
-            const startX = direction === 1 ? halfChord : -halfChord;
 
             for (let i = 1; i <= newSeatCount; i++) {
-              const lx = parabolaXAtArcLength(startX, effectiveSpacing * i, sagitta, chord, direction);
+              const lx = parabolaXAtArcLength(anchorLocalX, effectiveSpacing * i, sagitta, chord, direction);
               const ly = parabolaY(lx, sagitta, chord);
               previewPositions.push({
                 x: midX + lx * cosA - ly * sinA,
@@ -592,15 +620,19 @@ export class SelectionTool extends BaseTool {
 
         // Only commit if actually moved
         if (Math.abs(delta.x) > 1 || Math.abs(delta.y) > 1) {
-          // Restore original positions first (for clean command)
+          // Restore original positions and curveDefinitions first (for clean command)
           for (const [id, origPos] of this.dragOriginalPositions) {
             const el = this.engine.state.get(id);
             if (!el) continue;
-            const restored = {
+            let restored = {
               ...el,
               transform: { ...el.transform, position: origPos },
               bounds: { ...el.bounds, x: origPos.x - el.bounds.width / 2, y: origPos.y - el.bounds.height / 2 },
             } as MapElement;
+            const origCurveDef = this.dragOriginalCurveDefinitions.get(id);
+            if (isRow(restored) && origCurveDef !== undefined) {
+              restored = { ...restored, curveDefinition: origCurveDef } as MapElement;
+            }
             this.engine.state.set(id, restored);
             this.engine.spatialIndex.update(restored);
           }
@@ -753,8 +785,15 @@ export class SelectionTool extends BaseTool {
         if (extTangents) {
           const dir = this.extendingHandle === 'right' ? extTangents.rightDir : extTangents.leftDir;
           projection = dragDelta.x * dir.x + dragDelta.y * dir.y;
-          const halfChord = extTangents.chord / 2;
-          extEffectiveSpacing = parabolaArcLength(-halfChord, halfChord, extTangents.sagitta, extTangents.chord) / (row.seatIds.length - 1);
+          // Arc length per seat using curveDefinition
+          const extFirstSeat = this.engine.state.get(row.seatIds[0]) as Seat | undefined;
+          const extLastSeat = this.engine.state.get(row.seatIds[row.seatIds.length - 1]) as Seat | undefined;
+          if (extFirstSeat && extLastSeat) {
+            const def = row.curveDefinition ?? curveDefinitionFromEndpoints(extFirstSeat.transform.position, extLastSeat.transform.position);
+            const localXFirst = worldToParabolaLocalX(extFirstSeat.transform.position, def);
+            const localXLast = worldToParabolaLocalX(extLastSeat.transform.position, def);
+            extEffectiveSpacing = parabolaArcLength(localXFirst, localXLast, extTangents.sagitta, extTangents.chord) / (row.seatIds.length - 1);
+          }
         } else {
           const angle = row.orientationAngle;
           const dirX = Math.cos(angle);
@@ -774,27 +813,24 @@ export class SelectionTool extends BaseTool {
             const newSeats: Seat[] = [];
 
             if (extTangents) {
-              // Place new seats along parabola continuation
+              // Place new seats along parabola continuation using curveDefinition
               const firstSeat = this.engine.state.get(row.seatIds[0]) as Seat | undefined;
               const lastSeat = this.engine.state.get(row.seatIds[row.seatIds.length - 1]) as Seat | undefined;
               if (firstSeat && lastSeat) {
-                const firstPos = firstSeat.transform.position;
-                const lastPos = lastSeat.transform.position;
-                const chord = extTangents.chord;
+                const def = row.curveDefinition ?? curveDefinitionFromEndpoints(firstSeat.transform.position, lastSeat.transform.position);
+                const chord = def.chord;
                 const sagitta = extTangents.sagitta;
-                const halfChord = chord / 2;
-                const angle = angleBetween(firstPos, lastPos);
-                const cosA = Math.cos(angle);
-                const sinA = Math.sin(angle);
-                const midX = (firstPos.x + lastPos.x) / 2;
-                const midY = (firstPos.y + lastPos.y) / 2;
+                const cosA = Math.cos(def.angle);
+                const sinA = Math.sin(def.angle);
+                const midX = def.center.x;
+                const midY = def.center.y;
 
+                const anchorLocalX = worldToParabolaLocalX(anchorSeat.transform.position, def);
                 const direction: 1 | -1 = this.extendingHandle === 'right' ? 1 : -1;
-                const startX = direction === 1 ? halfChord : -halfChord;
                 const r = anchorSeat.radius || DEFAULT_SEAT_RADIUS;
 
                 for (let i = 1; i <= newSeatCount; i++) {
-                  const lx = parabolaXAtArcLength(startX, extEffectiveSpacing * i, sagitta, chord, direction);
+                  const lx = parabolaXAtArcLength(anchorLocalX, extEffectiveSpacing * i, sagitta, chord, direction);
                   const ly = parabolaY(lx, sagitta, chord);
                   const pos = {
                     x: midX + lx * cosA - ly * sinA,
@@ -930,6 +966,7 @@ export class SelectionTool extends BaseTool {
     this.dragStartWorld = null;
     this.dragStartScreen = null;
     this.dragOriginalPositions.clear();
+    this.dragOriginalCurveDefinitions.clear();
     this.boxSelectStart = null;
     this.boxSelectCurrent = null;
     this.extendingRowId = null;
@@ -966,16 +1003,20 @@ export class SelectionTool extends BaseTool {
 
   cancel(): void {
     if (this._currentState === 'dragging' && this.engine) {
-      // Revert to original positions
+      // Revert to original positions and curveDefinitions
       const reverted: MapElement[] = [];
       for (const [id, origPos] of this.dragOriginalPositions) {
         const el = this.engine.state.get(id);
         if (!el) continue;
-        const restored = {
+        let restored = {
           ...el,
           transform: { ...el.transform, position: origPos },
           bounds: { ...el.bounds, x: origPos.x - el.bounds.width / 2, y: origPos.y - el.bounds.height / 2 },
         } as MapElement;
+        const origCurveDef = this.dragOriginalCurveDefinitions.get(id);
+        if (isRow(restored) && origCurveDef !== undefined) {
+          restored = { ...restored, curveDefinition: origCurveDef } as MapElement;
+        }
         this.engine.state.set(id, restored);
         this.engine.spatialIndex.update(restored);
         reverted.push(restored);
@@ -1046,6 +1087,7 @@ export class SelectionTool extends BaseTool {
     }
     this.dragStartWorld = null;
     this.dragOriginalPositions.clear();
+    this.dragOriginalCurveDefinitions.clear();
     this.boxSelectStart = null;
     this.boxSelectCurrent = null;
     this.extendingRowId = null;
@@ -1087,21 +1129,24 @@ export class SelectionTool extends BaseTool {
 
     const firstPos = firstSeat.transform.position;
     const lastPos = lastSeat.transform.position;
-    const chord = distance(firstPos, lastPos);
-    if (isRowCurvatureEffectivelyStraight(row.curveRadius ?? 0, chord)) return null;
-
     const sagitta = row.curveRadius ?? 0;
-    const halfChord = chord / 2;
 
-    // Local tangent at left endpoint (-chord/2)
-    const tLeft = parabolaTangentLocal(-halfChord, sagitta, chord);
-    // Local tangent at right endpoint (+chord/2)
-    const tRight = parabolaTangentLocal(halfChord, sagitta, chord);
+    // Use curveDefinition if available, fallback to endpoints
+    const def = row.curveDefinition ?? curveDefinitionFromEndpoints(firstPos, lastPos);
+    if (isRowCurvatureEffectivelyStraight(sagitta, def.chord)) return null;
 
-    // Transform local tangents to world space
-    const angle = angleBetween(firstPos, lastPos);
-    const cosA = Math.cos(angle);
-    const sinA = Math.sin(angle);
+    // Compute actual local x of first and last seats on the parabola
+    const localXFirst = worldToParabolaLocalX(firstPos, def);
+    const localXLast = worldToParabolaLocalX(lastPos, def);
+
+    // Local tangent at actual first seat position
+    const tLeft = parabolaTangentLocal(localXFirst, sagitta, def.chord);
+    // Local tangent at actual last seat position
+    const tRight = parabolaTangentLocal(localXLast, sagitta, def.chord);
+
+    // Transform local tangents to world space using the parabola angle
+    const cosA = Math.cos(def.angle);
+    const sinA = Math.sin(def.angle);
 
     // Left outward = opposite of curve traversal direction at left end
     const leftRawX = -(tLeft.tx * cosA - tLeft.ty * sinA);
@@ -1115,7 +1160,7 @@ export class SelectionTool extends BaseTool {
     const rightLen = Math.sqrt(rightRawX * rightRawX + rightRawY * rightRawY);
     const rightDir: Point = { x: rightRawX / rightLen, y: rightRawY / rightLen };
 
-    return { leftDir, rightDir, chord, sagitta };
+    return { leftDir, rightDir, chord: def.chord, sagitta };
   }
 
   private hitTestHandles(point: Point): { rowId: ElementId; handle: 'left' | 'right' } | null {
@@ -1545,17 +1590,18 @@ export class SelectionTool extends BaseTool {
 
     const firstPos = firstSeat.transform.position;
     const lastPos = lastSeat.transform.position;
-    const midX = (firstPos.x + lastPos.x) / 2;
-    const midY = (firstPos.y + lastPos.y) / 2;
 
-    const angle = row.orientationAngle;
-    const perpX = -Math.sin(angle);
-    const perpY = Math.cos(angle);
+    // Use curveDefinition for center/angle if available (asymmetric curves)
+    const def = row.curveDefinition ?? curveDefinitionFromEndpoints(firstPos, lastPos);
+    const midX = def.center.x;
+    const midY = def.center.y;
+
+    const perpX = -Math.sin(def.angle);
+    const perpY = Math.cos(def.angle);
 
     const curveOffset = row.curveRadius || 0;
     // Clamp handle position to match curve limits
-    const chord = distance(firstPos, lastPos);
-    const maxSagitta = (chord / 2) * 0.75;
+    const maxSagitta = (def.chord / 2) * 0.75;
     const clampedOffset = Math.max(-maxSagitta, Math.min(maxSagitta, curveOffset));
     const handlePos: Point = clampedOffset === 0
       ? { x: midX + perpX * 20, y: midY + perpY * 20 }
