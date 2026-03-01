@@ -1,5 +1,5 @@
 /**
- * Dark cursor utility — guarantees cursor visibility on light backgrounds.
+ * Custom cursor utility — uses user-provided SVG cursors as inline data-URIs.
  *
  * Each cursor is an inline SVG data-URI so there are zero external assets.
  * The fallback after the URL is the standard CSS keyword, which ensures
@@ -14,43 +14,47 @@ const svgToDataUri = (svg: string) =>
 
 // ── SVG sources ──────────────────────────────────────────────────────────
 
+// cursor.svg — default arrow pointer (28x28, tip at ~8,5)
 const defaultArrowSvg = `
-<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 20 20">
-  <path d="M2 1 L2 17 L6.5 12.5 L10 19 L12.5 18 L9 11.5 L15 11.5 Z"
-        fill="#222" stroke="#fff" stroke-width="1.2" stroke-linejoin="round"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 28 28">
+<polygon fill="#FFFFFF" points="8.2,20.9 8.2,4.9 19.8,16.5 13,16.5 12.6,16.6"/>
+<polygon fill="#FFFFFF" points="17.3,21.6 13.7,23.1 9,12 12.7,10.5"/>
+<rect x="12.5" y="13.6" transform="matrix(0.9221 -0.3871 0.3871 0.9221 -5.7605 6.5909)" width="2" height="8"/>
+<polygon points="9.2,7.3 9.2,18.5 12.2,15.6 12.6,15.5 17.4,15.5"/>
 </svg>`;
 
-const pointerSvg = `
-<svg xmlns="http://www.w3.org/2000/svg" width="20" height="22" viewBox="0 0 20 22">
-  <path d="M7 1 C7 1 7 10 7 10 L5 8 C4 7 2.5 7.5 3 9 L6 16 C6 16 7 19 11 19 C15 19 16 16 16 13 L16 8 C16 7 15 6.5 14 7 L14 8 L14 7 C14 6 13 5.5 12 6 L12 7 L12 6 C12 5 11 4.5 10 5 L10 10 L10 1 C10 0 9 -0.5 8 0 C7 0.5 7 1 7 1Z"
-        fill="#222" stroke="#fff" stroke-width="1" stroke-linejoin="round"/>
-</svg>`;
-
-const grabSvg = `
-<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 22 22">
-  <path d="M8 8 L8 4.5 C8 3.5 9 3 10 3.5 L10 8 M10 7 L10 3 C10 2 11 1.5 12 2 L12 7 M12 7 L12 3.5 C12 2.5 13 2 14 2.5 L14 8 M14 8 L14 5 C14 4 15 3.5 16 4 L16 13 C16 17 13 19 10 19 C7 19 5 17 5 14 L5 10 C5 9 6 8.5 7 9 L8 10 L8 8 C8 7 7 6.5 6 7"
-        fill="#222" stroke="#fff" stroke-width="1" stroke-linejoin="round" stroke-linecap="round"/>
-</svg>`;
-
-const grabbingSvg = `
-<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 22 22">
-  <path d="M8 10 L8 8 C8 7 9 6.5 10 7 L10 10 M10 9 L10 7 C10 6 11 5.5 12 6 L12 9 M12 9 L12 7 C12 6 13 5.5 14 6 L14 10 M14 10 L14 8 C14 7 15 6.5 16 7 L16 14 C16 18 13 20 10 20 C7 20 5 18 5 15 L5 11 C5 10 6 9.5 7 10 L8 11 L8 10"
-        fill="#222" stroke="#fff" stroke-width="1" stroke-linejoin="round" stroke-linecap="round"/>
-</svg>`;
-
+// screenshotselection.svg — crosshair (32x32, center at 15,15)
 const crosshairSvg = `
-<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 22 22">
-  <line x1="11" y1="0" x2="11" y2="8" stroke="#fff" stroke-width="3" stroke-linecap="round"/>
-  <line x1="11" y1="14" x2="11" y2="22" stroke="#fff" stroke-width="3" stroke-linecap="round"/>
-  <line x1="0" y1="11" x2="8" y2="11" stroke="#fff" stroke-width="3" stroke-linecap="round"/>
-  <line x1="14" y1="11" x2="22" y2="11" stroke="#fff" stroke-width="3" stroke-linecap="round"/>
-  <line x1="11" y1="0" x2="11" y2="8" stroke="#222" stroke-width="1.5" stroke-linecap="round"/>
-  <line x1="11" y1="14" x2="11" y2="22" stroke="#222" stroke-width="1.5" stroke-linecap="round"/>
-  <line x1="0" y1="11" x2="8" y2="11" stroke="#222" stroke-width="1.5" stroke-linecap="round"/>
-  <line x1="14" y1="11" x2="22" y2="11" stroke="#222" stroke-width="1.5" stroke-linecap="round"/>
-  <circle cx="11" cy="11" r="2" fill="none" stroke="#222" stroke-width="1.5"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
+<rect x="15" y="4" fill="#231F20" opacity="0.72" width="1" height="11"/>
+<rect x="15" y="16" fill="#231F20" opacity="0.72" width="1" height="11"/>
+<rect x="4" y="15" fill="#231F20" opacity="0.72" width="11" height="1"/>
+<rect x="16" y="15" fill="#231F20" opacity="0.72" width="11" height="1"/>
+<circle fill="#231F20" fill-opacity="0.15" cx="15.5" cy="15.5" r="5.5"/>
+<circle fill="none" stroke="#231F20" stroke-opacity="0.3" cx="15.5" cy="15.5" r="5.5"/>
 </svg>`;
 
+// openhand.svg — grab cursor (32x32, center ~16,16)
+const grabSvg = `
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
+<path fill="#FFFFFF" d="M12.6,16.6c-0.1-0.4-0.2-0.8-0.4-1.6c-0.2-0.6-0.3-0.9-0.5-1.2c-0.2-0.5-0.3-0.7-0.5-1.2c-0.1-0.3-0.4-1-0.5-1.4c-0.1-0.5,0-0.9,0.2-1.2c0.3-0.3,1-0.5,1.4-0.4c0.4,0.1,0.7,0.5,0.9,0.8c0.3,0.5,0.4,0.6,0.7,1.5c0.4,1,0.6,1.9,0.6,2.2l0.1,0.5c0,0,0-1.1,0-1.2c0-1-0.1-1.8,0-2.9c0-0.1,0.1-0.6,0.1-0.7c0.1-0.5,0.3-0.8,0.7-1c0.4-0.2,0.9-0.2,1.4,0c0.4,0.2,0.6,0.5,0.7,1c0,0.1,0.1,1,0.1,1.1c0,1,0,1.6,0,2.2c0,0.2,0,1.6,0,1.5c0.1-0.7,0.1-3.2,0.3-3.9c0.1-0.4,0.4-0.7,0.8-0.9c0.4-0.2,1.1-0.1,1.4,0.2c0.3,0.3,0.4,0.7,0.5,1.2c0,0.4,0,0.9,0,1.2c0,0.9,0,1.3,0,2.1c0,0,0,0.3,0,0.2c0.1-0.3,0.2-0.5,0.3-0.7c0-0.1,0.2-0.6,0.4-0.9c0.1-0.2,0.2-0.4,0.4-0.7c0.2-0.3,0.4-0.4,0.7-0.6c0.5-0.2,1.1,0.1,1.3,0.6c0.1,0.2,0,0.7,0,1.1c-0.1,0.6-0.3,1.3-0.4,1.6c-0.1,0.4-0.3,1.2-0.3,1.6c-0.1,0.4-0.2,1.4-0.4,1.8c-0.1,0.3-0.4,1-0.7,1.4c0,0-1.1,1.2-1.2,1.8c-0.1,0.6-0.1,0.6-0.1,1c0,0.4,0.1,0.9,0.1,0.9s-0.8,0.1-1.2,0c-0.4-0.1-0.9-0.8-1-1.1c-0.2-0.3-0.5-0.3-0.7,0c-0.2,0.4-0.7,1.1-1.1,1.1c-0.7,0.1-2.1,0-3.1,0c0,0,0.2-1-0.2-1.4c-0.3-0.3-0.8-0.8-1.1-1.1l-0.8-0.9c-0.3-0.4-0.6-1.1-1.2-2c-0.3-0.5-1-1.1-1.3-1.6c-0.2-0.4-0.3-1-0.2-1.3c0.2-0.6,0.7-0.9,1.4-0.8c0.5,0,0.8,0.2,1.2,0.5c0.2,0.2,0.6,0.5,0.8,0.7c0.2,0.2,0.2,0.3,0.4,0.5C12.6,16.8,12.6,16.9,12.6,16.6"/>
+<path fill="none" stroke="#000000" stroke-width="0.75" stroke-linecap="round" stroke-linejoin="round" d="M12.6,16.6c-0.1-0.4-0.2-0.8-0.4-1.6c-0.2-0.6-0.3-0.9-0.5-1.2c-0.2-0.5-0.3-0.7-0.5-1.2c-0.1-0.3-0.4-1-0.5-1.4c-0.1-0.5,0-0.9,0.2-1.2c0.3-0.3,1-0.5,1.4-0.4c0.4,0.1,0.7,0.5,0.9,0.8c0.3,0.5,0.4,0.6,0.7,1.5c0.4,1,0.6,1.9,0.6,2.2l0.1,0.5c0,0,0-1.1,0-1.2c0-1-0.1-1.8,0-2.9c0-0.1,0.1-0.6,0.1-0.7c0.1-0.5,0.3-0.8,0.7-1c0.4-0.2,0.9-0.2,1.4,0c0.4,0.2,0.6,0.5,0.7,1c0,0.1,0.1,1,0.1,1.1c0,1,0,1.6,0,2.2c0,0.2,0,1.6,0,1.5c0.1-0.7,0.1-3.2,0.3-3.9c0.1-0.4,0.4-0.7,0.8-0.9c0.4-0.2,1.1-0.1,1.4,0.2c0.3,0.3,0.4,0.7,0.5,1.2c0,0.4,0,0.9,0,1.2c0,0.9,0,1.3,0,2.1c0,0,0,0.3,0,0.2c0.1-0.3,0.2-0.5,0.3-0.7c0-0.1,0.2-0.6,0.4-0.9c0.1-0.2,0.2-0.4,0.4-0.7c0.2-0.3,0.4-0.4,0.7-0.6c0.5-0.2,1.1,0.1,1.3,0.6c0.1,0.2,0,0.7,0,1.1c-0.1,0.6-0.3,1.3-0.4,1.6c-0.1,0.4-0.3,1.2-0.3,1.6c-0.1,0.4-0.2,1.4-0.4,1.8c-0.1,0.3-0.4,1-0.7,1.4c0,0-1.1,1.2-1.2,1.8c-0.1,0.6-0.1,0.6-0.1,1c0,0.4,0.1,0.9,0.1,0.9s-0.8,0.1-1.2,0c-0.4-0.1-0.9-0.8-1-1.1c-0.2-0.3-0.5-0.3-0.7,0c-0.2,0.4-0.7,1.1-1.1,1.1c-0.7,0.1-2.1,0-3.1,0c0,0,0.2-1-0.2-1.4c-0.3-0.3-0.8-0.8-1.1-1.1l-0.8-0.9c-0.3-0.4-0.6-1.1-1.2-2c-0.3-0.5-1-1.1-1.3-1.6c-0.2-0.4-0.3-1-0.2-1.3c0.2-0.6,0.7-0.9,1.4-0.8c0.5,0,0.8,0.2,1.2,0.5c0.2,0.2,0.6,0.5,0.8,0.7c0.2,0.2,0.2,0.3,0.4,0.5C12.6,16.8,12.6,16.9,12.6,16.6"/>
+<line fill="none" stroke="#000000" stroke-width="0.75" stroke-linecap="round" x1="19.6" y1="20.7" x2="19.6" y2="17.3"/>
+<line fill="none" stroke="#000000" stroke-width="0.75" stroke-linecap="round" x1="17.6" y1="20.7" x2="17.5" y2="17.3"/>
+<line fill="none" stroke="#000000" stroke-width="0.75" stroke-linecap="round" x1="15.6" y1="17.3" x2="15.6" y2="20.7"/>
+</svg>`;
+
+// closedhand.svg — grabbing cursor (32x32, center ~16,16)
+const grabbingSvg = `
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
+<path fill="#FFFFFF" d="M12.6,13c0.5-0.2,1.4-0.1,1.7,0.5c0.2,0.5,0.4,1.2,0.4,1.1c0-0.4,0-1.2,0.1-1.6c0.1-0.3,0.3-0.6,0.7-0.7c0.3-0.1,0.6-0.1,0.9-0.1c0.3,0.1,0.6,0.3,0.8,0.5c0.4,0.6,0.4,1.9,0.4,1.8c0.1-0.3,0.1-1.2,0.3-1.6c0.1-0.2,0.5-0.4,0.7-0.5c0.3-0.1,0.7-0.1,1,0c0.2,0,0.6,0.3,0.7,0.5c0.2,0.3,0.3,1.3,0.4,1.7c0,0.1,0.1-0.4,0.3-0.7c0.4-0.6,1.8-0.8,1.9,0.6c0,0.7,0,0.6,0,1.1c0,0.5,0,0.8,0,1.2c0,0.4-0.1,1.3-0.2,1.7c-0.1,0.3-0.4,1-0.7,1.4c0,0-1.1,1.2-1.2,1.8c-0.1,0.6-0.1,0.6-0.1,1c0,0.4,0.1,0.9,0.1,0.9s-0.8,0.1-1.2,0c-0.4-0.1-0.9-0.8-1-1.1c-0.2-0.3-0.5-0.3-0.7,0c-0.2,0.4-0.7,1.1-1,1.1c-0.7,0.1-2.1,0-3.1,0c0,0,0.2-1-0.2-1.4c-0.3-0.3-0.8-0.8-1.1-1.1l-0.8-0.9c-0.3-0.4-1-0.9-1.2-2c-0.2-0.9-0.2-1.4,0-1.8c0.2-0.4,0.7-0.6,0.9-0.6c0.2,0,0.7,0,0.9,0.1c0.2,0.1,0.3,0.2,0.5,0.4c0.2,0.3,0.3,0.5,0.2,0.1c-0.1-0.3-0.3-0.6-0.4-1c-0.1-0.4-0.4-0.9-0.4-1.5C11.7,13.9,11.8,13.3,12.6,13"/>
+<path fill="none" stroke="#000000" stroke-width="0.75" stroke-linejoin="round" d="M12.6,13c0.5-0.2,1.4-0.1,1.7,0.5c0.2,0.5,0.4,1.2,0.4,1.1c0-0.4,0-1.2,0.1-1.6c0.1-0.3,0.3-0.6,0.7-0.7c0.3-0.1,0.6-0.1,0.9-0.1c0.3,0.1,0.6,0.3,0.8,0.5c0.4,0.6,0.4,1.9,0.4,1.8c0.1-0.3,0.1-1.2,0.3-1.6c0.1-0.2,0.5-0.4,0.7-0.5c0.3-0.1,0.7-0.1,1,0c0.2,0,0.6,0.3,0.7,0.5c0.2,0.3,0.3,1.3,0.4,1.7c0,0.1,0.1-0.4,0.3-0.7c0.4-0.6,1.8-0.8,1.9,0.6c0,0.7,0,0.6,0,1.1c0,0.5,0,0.8,0,1.2c0,0.4-0.1,1.3-0.2,1.7c-0.1,0.3-0.4,1-0.7,1.4c0,0-1.1,1.2-1.2,1.8c-0.1,0.6-0.1,0.6-0.1,1c0,0.4,0.1,0.9,0.1,0.9s-0.8,0.1-1.2,0c-0.4-0.1-0.9-0.8-1-1.1c-0.2-0.3-0.5-0.3-0.7,0c-0.2,0.4-0.7,1.1-1,1.1c-0.7,0.1-2.1,0-3.1,0c0,0,0.2-1-0.2-1.4c-0.3-0.3-0.8-0.8-1.1-1.1l-0.8-0.9c-0.3-0.4-1-0.9-1.2-2c-0.2-0.9-0.2-1.4,0-1.8c0.2-0.4,0.7-0.6,0.9-0.6c0.2,0,0.7,0,0.9,0.1c0.2,0.1,0.3,0.2,0.5,0.4c0.2,0.3,0.3,0.5,0.2,0.1c-0.1-0.3-0.3-0.6-0.4-1c-0.1-0.4-0.4-0.9-0.4-1.5C11.7,13.9,11.8,13.3,12.6,13z"/>
+<line fill="none" stroke="#000000" stroke-width="0.75" stroke-linecap="round" x1="19.6" y1="20.7" x2="19.6" y2="17.3"/>
+<line fill="none" stroke="#000000" stroke-width="0.75" stroke-linecap="round" x1="17.6" y1="20.7" x2="17.5" y2="17.3"/>
+<line fill="none" stroke="#000000" stroke-width="0.75" stroke-linecap="round" x1="15.6" y1="17.3" x2="15.6" y2="20.7"/>
+</svg>`;
+
+// Resize cursors (no user-provided SVGs, keep custom dark variants)
 const nwseResizeSvg = `
 <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 20 20">
   <line x1="4" y1="4" x2="16" y2="16" stroke="#fff" stroke-width="3.5" stroke-linecap="round"/>
@@ -70,17 +74,20 @@ const neswResizeSvg = `
 // ── Mapping ──────────────────────────────────────────────────────────────
 
 const cursorMap: Record<string, string> = {
-  default:       `${svgToDataUri(defaultArrowSvg)} 2 1, default`,
-  pointer:       `${svgToDataUri(pointerSvg)} 8 1, pointer`,
-  grab:          `${svgToDataUri(grabSvg)} 11 11, grab`,
-  grabbing:      `${svgToDataUri(grabbingSvg)} 11 11, grabbing`,
-  crosshair:     `${svgToDataUri(crosshairSvg)} 11 11, crosshair`,
+  default:       `${svgToDataUri(defaultArrowSvg)} 8 5, default`,
+  pointer:       `${svgToDataUri(defaultArrowSvg)} 8 5, pointer`,
+  grab:          `${svgToDataUri(grabSvg)} 16 16, grab`,
+  grabbing:      `${svgToDataUri(grabbingSvg)} 16 16, grabbing`,
+  crosshair:     `${svgToDataUri(crosshairSvg)} 15 15, crosshair`,
   'nwse-resize': `${svgToDataUri(nwseResizeSvg)} 10 10, nwse-resize`,
   'nesw-resize': `${svgToDataUri(neswResizeSvg)} 10 10, nesw-resize`,
 };
 
+/** The dark default arrow cursor as a CSS value (for use in stylesheets / inline). */
+export const DARK_DEFAULT_CURSOR = cursorMap['default'];
+
 /**
- * Returns a dark, high-visibility CSS cursor value for the given cursor name.
+ * Returns a custom CSS cursor value for the given cursor name.
  * Unknown names are passed through unchanged.
  */
 export function darkCursor(name: string): string {

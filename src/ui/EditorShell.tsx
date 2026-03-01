@@ -35,6 +35,7 @@ import { PanTool } from '@/src/engine/tools/PanTool';
 import { GridTool } from '@/src/engine/tools/GridTool';
 import { SeatPickerTool } from '@/src/engine/tools/SeatPickerTool';
 import { bridgeEngineToStore } from '@/src/store/engineBridge';
+import { DARK_DEFAULT_CURSOR } from '@/src/utils/cursors';
 
 function EditorInner({ engine }: { engine: EditorEngine }) {
   useKeyboardShortcuts(engine);
@@ -123,12 +124,16 @@ export function EditorShell() {
     // Initialize
     engine.initialize();
 
+    // Apply dark default cursor globally (toolbar, panels, status bar, etc.)
+    document.body.style.cursor = DARK_DEFAULT_CURSOR;
+
     engineRef.current = engine;
     setReady(true);
 
     return () => {
       cleanup();
       engine.dispose();
+      document.body.style.cursor = '';
       engineRef.current = null;
     };
   }, []);
