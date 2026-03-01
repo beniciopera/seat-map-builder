@@ -116,6 +116,11 @@ export class InputManager {
       return;
     }
 
+    // Blur any focused input so that onBlur handlers (e.g. seat count) commit their values
+    if (document.activeElement instanceof HTMLElement && document.activeElement !== e.target) {
+      document.activeElement.blur();
+    }
+
     const inputEvent = this.toInputEvent(e);
     const tool = this.engine.tools.getActiveTool();
     tool?.onPointerDown(inputEvent);

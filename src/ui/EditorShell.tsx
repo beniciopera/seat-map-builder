@@ -1,5 +1,5 @@
 'use client';
-import { useRef, useEffect, useState } from 'react';
+import { useRef, useEffect, useState, useCallback } from 'react';
 import {
   ThemeProvider,
   CssBaseline,
@@ -23,8 +23,6 @@ import { Toolbar } from './components/Toolbar/Toolbar';
 import { CanvasHost } from './components/Canvas/CanvasHost';
 import { PropertiesPanel } from './components/Panels/PropertiesPanel';
 import { StatusBar } from './components/StatusBar/StatusBar';
-import { ExportDialog } from './components/Dialogs/ExportDialog';
-import { ImportDialog } from './components/Dialogs/ImportDialog';
 import { ConfirmDeleteDialog } from './components/Dialogs/ConfirmDeleteDialog';
 import { EditorEngine } from '@/src/engine/EditorEngine';
 import { SelectionTool } from '@/src/engine/tools/SelectionTool';
@@ -36,17 +34,51 @@ import { GridTool } from '@/src/engine/tools/GridTool';
 import { SeatPickerTool } from '@/src/engine/tools/SeatPickerTool';
 import { bridgeEngineToStore } from '@/src/store/engineBridge';
 import { DARK_DEFAULT_CURSOR } from '@/src/utils/cursors';
+import { serializeLayout, deserializeLayout } from '@/src/domain/serialization';
 
 function EditorInner({ engine }: { engine: EditorEngine }) {
   useKeyboardShortcuts(engine);
-  const [exportOpen, setExportOpen] = useState(false);
-  const [importOpen, setImportOpen] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [newMapConfirmOpen, setNewMapConfirmOpen] = useState(false);
 
   const handleNewMap = () => {
     engine.resetState();
     setNewMapConfirmOpen(false);
   };
+
+  const handleExport = useCallback(() => {
+    const layout = engine.getLayout();
+    const json = serializeLayout(layout);
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${layout.name.replace(/\s+/g, '_')}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }, [engine]);
+
+  const handleFileImport = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const layout = deserializeLayout(reader.result as string);
+        engine.loadLayout(layout);
+      } catch (err) {
+        alert(err instanceof Error ? err.message : 'Invalid JSON format');
+      }
+    };
+    reader.onerror = () => {
+      alert('Failed to read file');
+    };
+    reader.readAsText(file);
+    // Reset so the same file can be re-imported
+    e.target.value = '';
+  }, [engine]);
 
   return (
     <EngineProvider value={engine}>
@@ -61,12 +93,12 @@ function EditorInner({ engine }: { engine: EditorEngine }) {
             </IconButton>
           </Tooltip>
           <Tooltip title="Import JSON">
-            <IconButton onClick={() => setImportOpen(true)} sx={{ mr: 0.5 }}>
+            <IconButton onClick={() => fileInputRef.current?.click()} sx={{ mr: 0.5 }}>
               <FileUploadIcon fontSize="small" />
             </IconButton>
           </Tooltip>
           <Tooltip title="Export JSON">
-            <IconButton onClick={() => setExportOpen(true)} sx={{ mr: 1 }}>
+            <IconButton onClick={handleExport} sx={{ mr: 1 }}>
               <FileDownloadIcon fontSize="small" />
             </IconButton>
           </Tooltip>
@@ -76,8 +108,13 @@ function EditorInner({ engine }: { engine: EditorEngine }) {
           <PropertiesPanel />
         </Box>
         <StatusBar />
-        <ExportDialog open={exportOpen} onClose={() => setExportOpen(false)} />
-        <ImportDialog open={importOpen} onClose={() => setImportOpen(false)} />
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".json"
+          hidden
+          onChange={handleFileImport}
+        />
         <ConfirmDeleteDialog />
 
         <Dialog open={newMapConfirmOpen} onClose={() => setNewMapConfirmOpen(false)}>
