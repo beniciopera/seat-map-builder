@@ -1,4 +1,5 @@
 import type { Point } from '@/src/domain/geometry';
+import type { CurveDefinition } from '@/src/domain/types';
 
 export function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
@@ -179,4 +180,37 @@ export function parabolaPositions(
       y: midY + lx * sinA + ly * cosA,
     };
   });
+}
+
+// ── CurveDefinition helpers ──────────────────────────────────────────
+
+/** Create a CurveDefinition from two world-space endpoints (fallback for legacy rows). */
+export function curveDefinitionFromEndpoints(first: Point, last: Point): CurveDefinition {
+  return {
+    chord: distance(first, last),
+    center: { x: (first.x + last.x) / 2, y: (first.y + last.y) / 2 },
+    angle: angleBetween(first, last),
+  };
+}
+
+/** Project a world-space point onto the parabola's local x-axis. */
+export function worldToParabolaLocalX(worldPoint: Point, def: CurveDefinition): number {
+  const dx = worldPoint.x - def.center.x;
+  const dy = worldPoint.y - def.center.y;
+  return dx * Math.cos(def.angle) + dy * Math.sin(def.angle);
+}
+
+/** Convert a local x coordinate on the parabola to a world-space point. */
+export function parabolaLocalToWorld(
+  localX: number,
+  def: CurveDefinition,
+  sagitta: number,
+): Point {
+  const ly = parabolaY(localX, sagitta, def.chord);
+  const cosA = Math.cos(def.angle);
+  const sinA = Math.sin(def.angle);
+  return {
+    x: def.center.x + localX * cosA - ly * sinA,
+    y: def.center.y + localX * sinA + ly * cosA,
+  };
 }

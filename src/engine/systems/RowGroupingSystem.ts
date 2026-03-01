@@ -51,6 +51,7 @@ export class RowGroupingSystem {
       spacing,
       seatOrderDirection: 'left-to-right',
       curveRadius: 0,
+      curveDefinition: null,
       category: 'planta1',
       areaId: null,
       locked: false,

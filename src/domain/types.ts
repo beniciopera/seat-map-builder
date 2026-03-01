@@ -32,6 +32,12 @@ export type SeatOrderDirection = 'left-to-right' | 'right-to-left';
 
 export type RowCategory = 'planta1' | 'planta2' | 'vip';
 
+export interface CurveDefinition {
+  readonly chord: number;   // chord length that defines the parabola shape
+  readonly center: Point;   // world-space center of the parabola
+  readonly angle: number;   // angle of the parabola chord direction (radians)
+}
+
 export interface Row extends BaseElement {
   readonly type: 'row';
   readonly label: string;
@@ -41,6 +47,7 @@ export interface Row extends BaseElement {
   readonly seatOrderDirection: SeatOrderDirection;
   readonly areaId: ElementId | null;
   readonly curveRadius: number; // 0 = straight, non-zero = sagitta (parabolic curve displacement)
+  readonly curveDefinition: CurveDefinition | null;
   readonly category: RowCategory;
 }
 
