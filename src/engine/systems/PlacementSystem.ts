@@ -68,9 +68,13 @@ export class PlacementSystem {
   placeGrid(rowPositions: Point[][]): void {
     if (rowPositions.length === 0) return;
 
+    const rowCount = rowPositions.filter(p => p.length >= 2).length;
+    const reservedLabels = this.engine.nextAvailableRowLabels(rowCount);
+
     const radius = DEFAULT_SEAT_RADIUS;
     const allRows: Row[] = [];
     const allSeats: Seat[] = [];
+    let labelIndex = 0;
 
     for (const positions of rowPositions) {
       if (positions.length === 0) continue;
@@ -98,9 +102,11 @@ export class PlacementSystem {
       }));
 
       const seatIds = seats.map(s => s.id);
-      const row = this.engine.rowGrouping.detectRow(positions, seatIds);
+      const overrideLabel = positions.length >= 2 ? reservedLabels[labelIndex] : undefined;
+      const row = this.engine.rowGrouping.detectRow(positions, seatIds, overrideLabel);
 
       if (row) {
+        labelIndex++;
         const rowLabel = row.label;
         for (let i = 0; i < seats.length; i++) {
           (seats[i] as { label: string }).label = `${rowLabel}-${i + 1}`;

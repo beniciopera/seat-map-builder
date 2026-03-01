@@ -214,6 +214,28 @@ export class EditorEngine {
     }
   }
 
+  nextAvailableRowLabels(count: number): string[] {
+    if (count <= 0) return [];
+
+    const takenLabels = new Set<string>();
+    for (const el of this.state.getAll()) {
+      if (el.type === 'row') {
+        takenLabels.add((el as Row).label);
+      }
+    }
+
+    const result: string[] = [];
+    let index = 0;
+    while (result.length < count) {
+      const candidate = rowLabelFromIndex(index);
+      if (!takenLabels.has(candidate)) {
+        result.push(candidate);
+      }
+      index++;
+    }
+    return result;
+  }
+
   nextAvailableTableLabel(startCounter: number): { label: string; counter: number } {
     let counter = startCounter;
     while (true) {

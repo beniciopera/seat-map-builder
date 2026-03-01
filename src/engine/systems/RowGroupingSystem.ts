@@ -14,7 +14,7 @@ export class RowGroupingSystem {
     this.engine = engine;
   }
 
-  detectRow(seatPositions: Point[], seatIds: ElementId[]): Row | null {
+  detectRow(seatPositions: Point[], seatIds: ElementId[], overrideLabel?: string): Row | null {
     if (seatPositions.length < 2) return null;
 
     const first = seatPositions[0];
@@ -24,8 +24,14 @@ export class RowGroupingSystem {
       ? distance(seatPositions[0], seatPositions[1])
       : 40;
 
-    const { label, index } = this.engine.nextAvailableRowLabel(0);
-    this.rowCounter = index + 1;
+    let label: string;
+    if (overrideLabel !== undefined) {
+      label = overrideLabel;
+    } else {
+      const result = this.engine.nextAvailableRowLabel(0);
+      label = result.label;
+      this.rowCounter = result.index + 1;
+    }
 
     // Compute bounding rect for the row
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
