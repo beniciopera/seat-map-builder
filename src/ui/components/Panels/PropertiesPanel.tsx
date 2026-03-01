@@ -327,7 +327,10 @@ function RowProperties({
         inputRef={inputRef}
         value={localLabel}
         onChange={(e) => setLocalLabel(e.target.value)}
-        onFocus={() => inputRef.current?.select()}
+        onFocus={() => {
+          const el = inputRef.current;
+          if (el) requestAnimationFrame(() => el.select());
+        }}
         onBlur={handleLabelBlur}
         onKeyDown={(e) => {
           if (e.key === 'Enter') {
@@ -478,7 +481,10 @@ function AreaProperties({ data, onChange, engine }: { data: Area; onChange: (fie
         placeholder="Enter area name..."
         value={localLabel}
         onChange={(e) => setLocalLabel(e.target.value)}
-        onFocus={() => inputRef.current?.select()}
+        onFocus={() => {
+          const el = inputRef.current;
+          if (el) requestAnimationFrame(() => el.select());
+        }}
         onBlur={handleBlur}
         onKeyDown={(e) => {
           if (e.key === 'Enter') {
@@ -543,10 +549,13 @@ function BulkSeatCountField({
   return (
     <TextField
       label="Seats"
-      type="number"
       fullWidth
       value={localValue}
       placeholder={commonSeatCount == null ? 'Mixed' : undefined}
+      onFocus={(e) => {
+        const target = e.target;
+        requestAnimationFrame(() => target.select());
+      }}
       onChange={(e) => setLocalValue(e.target.value)}
       onBlur={handleCommit}
       onKeyDown={(e) => {
@@ -555,7 +564,7 @@ function BulkSeatCountField({
           (e.target as HTMLInputElement).blur();
         }
       }}
-      inputProps={{ min: MIN_SEATS_PER_TABLE, max: MAX_SEATS_PER_TABLE }}
+      inputProps={{ inputMode: 'numeric' as const, pattern: '[0-9]*' }}
       sx={{ mb: 2 }}
     />
   );
@@ -653,7 +662,10 @@ function TableProperties({
         inputRef={inputRef}
         value={localLabel}
         onChange={(e) => setLocalLabel(e.target.value)}
-        onFocus={() => inputRef.current?.select()}
+        onFocus={() => {
+          const el = inputRef.current;
+          if (el) requestAnimationFrame(() => el.select());
+        }}
         onBlur={handleLabelBlur}
         onKeyDown={(e) => {
           if (e.key === 'Enter') {
@@ -700,9 +712,12 @@ function TableProperties({
       </FormControl>
       <TextField
         label="Seats"
-        type="number"
         fullWidth
         value={localSeatCount}
+        onFocus={(e) => {
+          const target = e.target;
+          requestAnimationFrame(() => target.select());
+        }}
         onChange={(e) => setLocalSeatCount(e.target.value)}
         onBlur={() => {
           const parsed = parseInt(localSeatCount, 10);
@@ -723,7 +738,7 @@ function TableProperties({
             (e.target as HTMLInputElement).blur();
           }
         }}
-        inputProps={{ min: MIN_SEATS_PER_TABLE, max: MAX_SEATS_PER_TABLE }}
+        inputProps={{ inputMode: 'numeric' as const, pattern: '[0-9]*' }}
         sx={{ mb: 2 }}
       />
     </>

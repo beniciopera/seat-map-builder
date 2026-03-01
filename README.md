@@ -1,6 +1,6 @@
 # Seat Map Editor
 
-Editor visual interactivo para diseñar mapas de asientos de venues y eventos. Permite crear, organizar y configurar asientos individuales, filas, mesas y áreas mediante una interfaz de canvas con herramientas especializadas, undo/redo completo e importación/exportación JSON.
+Editor visual interactivo para diseñar mapas de asientos de venues y eventos. Permite crear, organizar y configurar asientos individuales, filas, mesas y áreas mediante una interfaz de canvas con herramientas especializadas, undo/redo completo e importación/exportación JSON. Hecho con Claude Code CLI (Opus 4.6) y Cursor.
 
 Next.js
 React
