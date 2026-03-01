@@ -254,7 +254,7 @@ El formato de serialización usa `schemaVersion: 1` y convierte el `Map` de elem
 - **Un solo mapa a la vez**: no hay sistema de múltiples pestañas o proyectos.
 - **Canvas fijo de 5000×3000**: el tamaño del canvas es constante; los elementos se colocan dentro de estos límites.
 - **Persistencia local**: el mapa se guarda/carga como archivo JSON exportado. No hay backend ni base de datos.
-- **Labels auto-generados**: las filas se etiquetan automáticamente con letras (A, B, ..., Z, AA, AB, ...) y los asientos con números secuenciales dentro de su fila/mesa.
+- **Labels auto-generados**: las filas se etiquetan automáticamente con letras (A, B, ..., Z, AA, AB, ...) y los asientos con números secuenciales dentro de su fila/mesa (pueden ser modificados).
 - **Categorías fijas**: tres categorías predefinidas (`planta1`, `planta2`, `vip`) en vez de categorías dinámicas.
 - **Filas curvas parabólicas**: la curvatura usa una parábola (sagita) en vez de un arco circular, priorizando simplicidad de implementación.
 
