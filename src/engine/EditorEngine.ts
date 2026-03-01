@@ -141,17 +141,9 @@ export class EditorEngine {
       }
       case 'table': {
         const table = el as Table;
-        if (table.shape === 'round') {
-          const dx = point.x - table.transform.position.x;
-          const dy = point.y - table.transform.position.y;
-          return dx * dx + dy * dy <= table.tableRadius * table.tableRadius;
-        }
-        // rectangular table: rect centered on position
-        const halfW = table.tableWidth / 2;
-        const halfH = table.tableHeight / 2;
-        const px = point.x - table.transform.position.x;
-        const py = point.y - table.transform.position.y;
-        return px >= -halfW && px <= halfW && py >= -halfH && py <= halfH;
+        const dx = point.x - table.transform.position.x;
+        const dy = point.y - table.transform.position.y;
+        return dx * dx + dy * dy <= table.tableRadius * table.tableRadius;
       }
       default:
         return false;

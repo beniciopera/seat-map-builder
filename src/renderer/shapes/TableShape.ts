@@ -9,31 +9,16 @@ export function createTableShape(table: Table): Konva.Group {
   group.setAttr('elementId', table.id);
   group.setAttr('elementType', 'table');
 
-  if (table.shape === 'round') {
-    const circle = new Konva.Circle({
-      x: 0,
-      y: 0,
-      radius: table.tableRadius,
-      fill: '#A1887F',
-      stroke: '#8D6E63',
-      strokeWidth: 2,
-      name: 'tableBody',
-    });
-    group.add(circle);
-  } else {
-    const rect = new Konva.Rect({
-      x: -table.tableWidth / 2,
-      y: -table.tableHeight / 2,
-      width: table.tableWidth,
-      height: table.tableHeight,
-      fill: '#A1887F',
-      stroke: '#8D6E63',
-      strokeWidth: 2,
-      cornerRadius: 4,
-      name: 'tableBody',
-    });
-    group.add(rect);
-  }
+  const circle = new Konva.Circle({
+    x: 0,
+    y: 0,
+    radius: table.tableRadius,
+    fill: '#A1887F',
+    stroke: '#8D6E63',
+    strokeWidth: 2,
+    name: 'tableBody',
+  });
+  group.add(circle);
 
   const label = new Konva.Text({
     text: table.label,

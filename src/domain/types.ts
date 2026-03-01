@@ -51,17 +51,12 @@ export interface Area extends BaseElement {
   readonly rowIds: readonly ElementId[];
 }
 
-export type TableShape = 'round' | 'rectangular';
-
 export interface Table extends BaseElement {
   readonly type: 'table';
   readonly label: string;
-  readonly shape: TableShape;
   readonly seatCount: number;
   readonly seatIds: readonly ElementId[];
   readonly tableRadius: number;
-  readonly tableWidth: number;
-  readonly tableHeight: number;
   readonly category: SeatCategory;
 }
 
