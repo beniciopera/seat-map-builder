@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { ElementId, ElementType, MapElement } from '@/src/domain/types';
+import { DARK_DEFAULT_CURSOR } from '@/src/utils/cursors';
 
 export interface SelectedElementData {
   type: ElementType;
@@ -56,7 +57,7 @@ export const useEditorStore = create<EditorStoreState>((set) => ({
   canUndo: false,
   canRedo: false,
   elementCounts: { total: 0, seats: 0, rows: 0, areas: 0, tables: 0 },
-  cursor: 'default',
+  cursor: DARK_DEFAULT_CURSOR,
   selectedElementData: null,
   mouseWorldX: 0,
   mouseWorldY: 0,
