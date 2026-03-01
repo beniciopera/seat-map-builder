@@ -1,5 +1,6 @@
 import type { MapLayout, MapElement, ElementId, Seat, Table, Row } from '@/src/domain/types';
 import type { Point, Rect } from '@/src/domain/geometry';
+import { rowLabelFromIndex } from '@/src/domain/labels';
 import { EditorEventEmitter } from './events';
 import { EditorState } from './state/EditorState';
 import { SelectionState } from './state/SelectionState';
@@ -186,6 +187,56 @@ export class EditorEngine {
       if (el && el.visible) results.push(el);
     }
     return results;
+  }
+
+  isTableLabelTaken(label: string, excludeId?: ElementId): boolean {
+    for (const el of this.state.getAll()) {
+      if (el.type === 'table' && (el as Table).label === label && el.id !== excludeId) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  nextAvailableRowLabel(startIndex: number): { label: string; index: number } {
+    let index = startIndex;
+    while (true) {
+      const candidate = rowLabelFromIndex(index);
+      let taken = false;
+      for (const el of this.state.getAll()) {
+        if (el.type === 'row' && (el as Row).label === candidate) {
+          taken = true;
+          break;
+        }
+      }
+      if (!taken) return { label: candidate, index };
+      index++;
+    }
+  }
+
+  nextAvailableTableLabel(startCounter: number): { label: string; counter: number } {
+    let counter = startCounter;
+    while (true) {
+      const candidate = `T${counter}`;
+      if (!this.isTableLabelTaken(candidate)) return { label: candidate, counter };
+      counter++;
+    }
+  }
+
+  nextAvailableStandaloneSeatLabel(startCounter: number): { label: string; counter: number } {
+    let counter = startCounter;
+    while (true) {
+      const candidate = `S-${counter}`;
+      let taken = false;
+      for (const el of this.state.getAll()) {
+        if (el.type === 'seat' && (el as Seat).label === candidate) {
+          taken = true;
+          break;
+        }
+      }
+      if (!taken) return { label: candidate, counter };
+      counter++;
+    }
   }
 
   resetState(): void {
