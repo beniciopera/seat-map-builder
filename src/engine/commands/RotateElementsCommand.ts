@@ -1,5 +1,5 @@
 import type { Command } from './Command';
-import type { ElementId, MapElement } from '@/src/domain/types';
+import type { ElementId, MapElement, CurveDefinition } from '@/src/domain/types';
 import { isRow } from '@/src/domain/types';
 import type { Point, Rect } from '@/src/domain/geometry';
 import type { EditorEngine } from '../EditorEngine';
@@ -10,6 +10,7 @@ interface SavedTransform {
   rotation: number;
   bounds: Rect;
   orientationAngle?: number;
+  curveDefinition?: CurveDefinition | null;
 }
 
 export class RotateElementsCommand implements Command {
@@ -36,6 +37,7 @@ export class RotateElementsCommand implements Command {
         };
         if (isRow(el)) {
           saved.orientationAngle = el.orientationAngle;
+          saved.curveDefinition = el.curveDefinition;
         }
         this.oldTransforms.set(id, saved);
       }
@@ -56,7 +58,7 @@ export class RotateElementsCommand implements Command {
         bounds: old.bounds,
       } as MapElement;
       if (isRow(merged) && old.orientationAngle !== undefined) {
-        merged = { ...merged, orientationAngle: old.orientationAngle } as MapElement;
+        merged = { ...merged, orientationAngle: old.orientationAngle, curveDefinition: old.curveDefinition ?? null } as MapElement;
       }
       this.engine.state.set(id, merged);
       this.engine.spatialIndex.update(merged);
@@ -102,7 +104,20 @@ export class RotateElementsCommand implements Command {
 
       if (isRow(merged)) {
         const normalizedOrientation = degToRad(snapAngleDeg(radToDeg(merged.orientationAngle + angle)));
-        merged = { ...merged, orientationAngle: normalizedOrientation } as MapElement;
+        let curveDefinition = merged.curveDefinition;
+        if (curveDefinition) {
+          const cdx = curveDefinition.center.x - this.center.x;
+          const cdy = curveDefinition.center.y - this.center.y;
+          curveDefinition = {
+            ...curveDefinition,
+            center: {
+              x: this.center.x + cdx * cos - cdy * sin,
+              y: this.center.y + cdx * sin + cdy * cos,
+            },
+            angle: curveDefinition.angle + angle,
+          };
+        }
+        merged = { ...merged, orientationAngle: normalizedOrientation, curveDefinition } as MapElement;
       }
 
       this.engine.state.set(id, merged);

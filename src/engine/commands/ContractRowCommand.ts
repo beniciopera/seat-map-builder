@@ -1,16 +1,11 @@
 import type { Command } from './Command';
 import type { Seat, Row, ElementId, MapElement } from '@/src/domain/types';
 import type { EditorEngine } from '../EditorEngine';
-import { propagateRowLabel } from '@/src/domain/labels';
-import { distance, parabolaPositions, angleBetween } from '@/src/utils/math';
-import { isRowCurvatureEffectivelyStraight } from '@/src/domain/constraints';
+import { angleBetween } from '@/src/utils/math';
 import type { Point } from '@/src/domain/geometry';
 
 export class ContractRowCommand implements Command {
   readonly name = 'Contract Row';
-
-  // Saved positions of remaining seats for undo
-  private originalSeatPositions = new Map<ElementId, Point>();
 
   constructor(
     private engine: EditorEngine,
@@ -27,57 +22,12 @@ export class ContractRowCommand implements Command {
 
     const remainingSeatIds = this.originalRow.seatIds.filter(id => !removedIds.has(id));
 
-    // 1. Compute new sagitta BEFORE removing seats (so all seats are still accessible)
-    let newCurveRadius = row.curveRadius;
-    if (row.curveRadius && remainingSeatIds.length >= 2) {
-      const oldFirstSeat = this.engine.state.get(this.originalRow.seatIds[0]) as Seat | undefined;
-      const oldLastSeat = this.engine.state.get(this.originalRow.seatIds[this.originalRow.seatIds.length - 1]) as Seat | undefined;
-      if (oldFirstSeat && oldLastSeat) {
-        const oldChord = distance(oldFirstSeat.transform.position, oldLastSeat.transform.position);
-        const newFirst = this.engine.state.get(remainingSeatIds[0]) as Seat | undefined;
-        const newLast = this.engine.state.get(remainingSeatIds[remainingSeatIds.length - 1]) as Seat | undefined;
-        if (newFirst && newLast && oldChord > 0) {
-          const newChord = distance(newFirst.transform.position, newLast.transform.position);
-          const ratio = newChord / oldChord;
-          newCurveRadius = row.curveRadius * ratio * ratio;
-          if (isRowCurvatureEffectivelyStraight(newCurveRadius, newChord)) newCurveRadius = 0;
-        }
-      }
-    }
-
-    // 2. Remove seats from engine
+    // 1. Remove seats from engine
     this.engine.removeElements(this.removedSeats.map(s => s.id));
 
-    // 3. Reposition remaining seats onto the new parabola if curved
-    const firstSeat = this.engine.state.get(remainingSeatIds[0]) as Seat | undefined;
-    const lastSeat = this.engine.state.get(remainingSeatIds[remainingSeatIds.length - 1]) as Seat | undefined;
-    if (remainingSeatIds.length >= 2 && firstSeat && lastSeat) {
-      const chord = distance(firstSeat.transform.position, lastSeat.transform.position);
-      if (!isRowCurvatureEffectivelyStraight(newCurveRadius, chord)) {
-        const newPositions = parabolaPositions(
-          firstSeat.transform.position,
-          lastSeat.transform.position,
-          newCurveRadius,
-          remainingSeatIds.length,
-        );
-        for (let i = 0; i < remainingSeatIds.length; i++) {
-          const seat = this.engine.state.get(remainingSeatIds[i]) as Seat | undefined;
-          if (!seat) continue;
-          this.originalSeatPositions.set(seat.id, { ...seat.transform.position });
-          const pos = newPositions[i];
-          const r = seat.radius;
-          const repositioned: Seat = {
-            ...seat,
-            transform: { ...seat.transform, position: pos },
-            bounds: { x: pos.x - r, y: pos.y - r, width: r * 2, height: r * 2 },
-          };
-          this.engine.state.set(seat.id, repositioned);
-          this.engine.spatialIndex.update(repositioned);
-        }
-      }
-    }
+    // 2. Preserve curveRadius and curveDefinition — remaining seats stay in place on the same parabola
 
-    // 4. Recompute bounds from remaining seat positions
+    // 3. Recompute bounds from remaining seat positions
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     for (const seatId of remainingSeatIds) {
       const seat = this.engine.state.get(seatId) as Seat | undefined;
@@ -110,7 +60,6 @@ export class ContractRowCommand implements Command {
       ...row,
       orientationAngle,
       seatIds: remainingSeatIds,
-      curveRadius: newCurveRadius,
       transform: {
         ...row.transform,
         position: { x: midX, y: midY },
@@ -126,7 +75,7 @@ export class ContractRowCommand implements Command {
     this.engine.state.set(this.rowId, updatedRow);
     this.engine.spatialIndex.update(updatedRow);
 
-    // 5. Relabel all seats in the label group (continuous numbering across rows)
+    // 4. Relabel all seats in the label group (continuous numbering across rows)
     const groupUpdatedSeats = this.engine.rowGrouping.renumberLabelGroup(updatedRow.label);
 
     const allUpdated: MapElement[] = [updatedRow, ...groupUpdatedSeats];
@@ -148,24 +97,6 @@ export class ContractRowCommand implements Command {
     // Restore original row
     this.engine.state.set(this.rowId, this.originalRow);
     this.engine.spatialIndex.update(this.originalRow);
-
-    // Restore original seat positions
-    for (let i = 0; i < this.originalRow.seatIds.length; i++) {
-      const seatId = this.originalRow.seatIds[i];
-      const seat = this.engine.state.get(seatId) as Seat | undefined;
-      if (!seat) continue;
-      const origPos = this.originalSeatPositions.get(seatId);
-      if (origPos) {
-        const r = seat.radius;
-        const restored: Seat = {
-          ...seat,
-          transform: { ...seat.transform, position: origPos },
-          bounds: { x: origPos.x - r, y: origPos.y - r, width: r * 2, height: r * 2 },
-        };
-        this.engine.state.set(seatId, restored);
-        this.engine.spatialIndex.update(restored);
-      }
-    }
 
     // Renumber the label group to restore continuous numbering
     const groupUpdatedSeats = this.engine.rowGrouping.renumberLabelGroup(this.originalRow.label);

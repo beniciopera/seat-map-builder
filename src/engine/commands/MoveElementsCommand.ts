@@ -1,5 +1,6 @@
 import type { Command } from './Command';
-import type { ElementId, MapElement } from '@/src/domain/types';
+import type { ElementId, MapElement, Row } from '@/src/domain/types';
+import { isRow } from '@/src/domain/types';
 import type { Point } from '@/src/domain/geometry';
 import type { EditorEngine } from '../EditorEngine';
 
@@ -28,11 +29,26 @@ export class MoveElementsCommand implements Command {
     for (const [id, pos] of positions) {
       const el = this.engine.state.get(id);
       if (!el) continue;
-      const merged = {
+      let merged = {
         ...el,
         transform: { ...el.transform, position: pos },
         bounds: { ...el.bounds, x: pos.x - el.bounds.width / 2, y: pos.y - el.bounds.height / 2 },
       } as MapElement;
+      // Translate curveDefinition.center when moving a row
+      if (isRow(merged) && merged.curveDefinition) {
+        const dx = pos.x - el.transform.position.x;
+        const dy = pos.y - el.transform.position.y;
+        merged = {
+          ...merged,
+          curveDefinition: {
+            ...merged.curveDefinition,
+            center: {
+              x: merged.curveDefinition.center.x + dx,
+              y: merged.curveDefinition.center.y + dy,
+            },
+          },
+        } as MapElement;
+      }
       this.engine.state.set(id, merged);
       this.engine.spatialIndex.update(merged);
       updated.push(merged);
