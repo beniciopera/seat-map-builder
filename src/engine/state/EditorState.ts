@@ -8,7 +8,7 @@ export class EditorState {
   constructor() {
     this.layout = {
       id: generateMapId(),
-      name: 'Untitled Map',
+      name: 'Seat Map',
       width: 5000,
       height: 3000,
       elements: this.elements,

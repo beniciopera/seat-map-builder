@@ -127,3 +127,14 @@
 {"timestamp":"2026-03-01T00:01:00Z","tool/model":"Claude","purpose":"Bug fix","prompt":"Fix single row rotation always starting at 0 degrees after multi-selection rotation fix","notes":"Changed multi-selection detection from counting selected IDs to counting distinct top-level entities (rows/tables/standalone elements). A row with its seats counts as 1 entity, so single-row rotation correctly uses absolute angle."}
 {"timestamp":"2026-03-01T00:00:00Z","tool/model":"Claude","purpose":"Feature implementation","prompt":"when the user focus to config the mount of seat of a table, the text of the input must highlight","notes":"Added onFocus handler with e.target.select() to both the single-table and bulk-edit seat count TextField components in PropertiesPanel.tsx, so the input text is highlighted/selected when focused."}
 {"timestamp":"2026-03-01T00:00:00Z","tool/model":"Claude","purpose":"Bug fix","prompt":"Fix: Input text highlight on focus not working in Safari. Change seat count inputs from type=number to type=text with numeric inputMode, and wrap all select() calls in requestAnimationFrame for Safari compatibility.","notes":"Updated 5 inputs in PropertiesPanel.tsx: (1) wrapped all 5 select() calls in requestAnimationFrame to fix Safari clearing selection after focus, (2) changed 2 seat count inputs from type=number to type=text with inputMode=numeric and pattern=[0-9]* since Safari select() does not work on number inputs."}
+{"timestamp":"2026-03-01T00:00:00Z","tool/model":"Claude","purpose":"Feature implementation","prompt":"Implement the following plan: Add Drag & Drop JSON Import - Add HTML5 drag-and-drop event handlers to EditorShell.tsx, reuse existing deserializeLayout + engine.loadLayout logic, add visual overlay feedback.","notes":"Extracted shared importFile() function from handleFileImport, added isDragOver state with dragCounter ref for correct enter/leave tracking, added drag-and-drop handlers (onDragOver, onDragEnter, onDragLeave, onDrop) to root Box, added full-screen overlay with dashed border when dragging. Existing Import JSON button still works."}
+{"timestamp":"2026-03-01T00:00:00Z","tool/model":"Claude","purpose":"Feature implementation","prompt":"Implement the following plan:
+
+# Change default export filename to Seat_Map
+
+## Context
+The default layout name is `\"Untitled Map\"`, which produces `Untitled_Map.json` on export. The user wants the default export filename to be `Seat_Map.json`.
+
+## Change
+**File:** `src/engine/state/EditorState.ts` (line 11)
+- Change `name: 'Untitled Map'` → `name: 'Seat Map'`","notes":"Changed default layout name from 'Untitled Map' to 'Seat Map' in EditorState.ts so the export filename becomes Seat_Map.json."}

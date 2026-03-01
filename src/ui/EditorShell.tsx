@@ -40,6 +40,8 @@ function EditorInner({ engine }: { engine: EditorEngine }) {
   useKeyboardShortcuts(engine);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [newMapConfirmOpen, setNewMapConfirmOpen] = useState(false);
+  const [isDragOver, setIsDragOver] = useState(false);
+  const dragCounter = useRef(0);
 
   const handleNewMap = () => {
     engine.resetState();
@@ -60,12 +62,9 @@ function EditorInner({ engine }: { engine: EditorEngine }) {
     URL.revokeObjectURL(url);
   }, [engine]);
 
-  const handleFileImport = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const importFile = useCallback((file: File) => {
     if (!file.name.toLowerCase().endsWith('.json')) {
       alert('Please select a valid .json file');
-      e.target.value = '';
       return;
     }
     const reader = new FileReader();
@@ -81,13 +80,52 @@ function EditorInner({ engine }: { engine: EditorEngine }) {
       alert('Failed to read file');
     };
     reader.readAsText(file);
-    // Reset so the same file can be re-imported
-    e.target.value = '';
   }, [engine]);
+
+  const handleFileImport = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    importFile(file);
+    e.target.value = '';
+  }, [importFile]);
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+  }, []);
+
+  const handleDragEnter = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    dragCounter.current++;
+    setIsDragOver(true);
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    dragCounter.current--;
+    if (dragCounter.current === 0) {
+      setIsDragOver(false);
+    }
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    dragCounter.current = 0;
+    setIsDragOver(false);
+    const file = e.dataTransfer.files[0];
+    if (file) {
+      importFile(file);
+    }
+  }, [importFile]);
 
   return (
     <EngineProvider value={engine}>
-      <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh', width: '100vw' }}>
+      <Box
+        onDragOver={handleDragOver}
+        onDragEnter={handleDragEnter}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+        sx={{ display: 'flex', flexDirection: 'column', height: '100vh', width: '100vw', position: 'relative' }}
+      >
         <Box sx={{ display: 'flex', alignItems: 'center' }}>
           <Box sx={{ flex: 1 }}>
             <Toolbar />
@@ -136,6 +174,36 @@ function EditorInner({ engine }: { engine: EditorEngine }) {
             </Button>
           </DialogActions>
         </Dialog>
+
+        {isDragOver && (
+          <Box
+            sx={{
+              position: 'absolute',
+              inset: 0,
+              zIndex: 9999,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              backgroundColor: 'rgba(0, 0, 0, 0.6)',
+              pointerEvents: 'none',
+            }}
+          >
+            <Box
+              sx={{
+                border: '3px dashed',
+                borderColor: 'primary.main',
+                borderRadius: 2,
+                px: 4,
+                py: 3,
+                color: 'common.white',
+                fontSize: '1.25rem',
+                fontWeight: 500,
+              }}
+            >
+              Drop JSON file to import
+            </Box>
+          </Box>
+        )}
       </Box>
     </EngineProvider>
   );
