@@ -1,6 +1,7 @@
 import type { EditorEngine } from '@/src/engine/EditorEngine';
 import { useEditorStore } from './useEditorStore';
 import { throttle } from '@/src/utils/debounce';
+import { darkCursor } from '@/src/utils/cursors';
 
 export function bridgeEngineToStore(engine: EditorEngine): () => void {
   const unsubscribers: Array<() => void> = [];
@@ -103,7 +104,7 @@ export function bridgeEngineToStore(engine: EditorEngine): () => void {
 
   unsubscribers.push(
     engine.events.on('cursor:changed', ({ cursor }) => {
-      useEditorStore.getState().setCursor(cursor);
+      useEditorStore.getState().setCursor(darkCursor(cursor));
     }),
   );
 
