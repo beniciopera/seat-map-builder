@@ -483,8 +483,43 @@ function TableProperties({
   onChange: (field: string, value: unknown) => void;
   engine: ReturnType<typeof useEngine>;
 }) {
-  const handleLabelChange = (newLabel: string) => {
-    onChange('label', newLabel);
+  const [localLabel, setLocalLabel] = useState(data.label || '');
+  const inputRef = useRef<HTMLInputElement>(null);
+  const localLabelRef = useRef(localLabel);
+  localLabelRef.current = localLabel;
+
+  useEffect(() => {
+    setLocalLabel(data.label || '');
+  }, [data.label]);
+
+  // Commit pending valid label on unmount
+  useEffect(() => {
+    return () => {
+      const trimmed = localLabelRef.current.trim();
+      if (trimmed.length > 0 && trimmed !== (data.label || '')) {
+        if (!engine.isTableLabelTaken(trimmed, data.id)) {
+          const el = engine.getElement(data.id);
+          if (el) {
+            const oldProps = { label: (el as Table).label };
+            const newProps = { label: trimmed };
+            const cmd = new UpdatePropertiesCommand(engine, data.id, oldProps, newProps);
+            engine.history.execute(cmd);
+          }
+        }
+      }
+    };
+  }, [data.id, data.label, engine]);
+
+  const isEmpty = localLabel.trim().length === 0;
+  const isDuplicate = !isEmpty && engine.isTableLabelTaken(localLabel.trim(), data.id);
+
+  const handleLabelBlur = () => {
+    const trimmed = localLabel.trim();
+    if (trimmed.length > 0 && !engine.isTableLabelTaken(trimmed, data.id)) {
+      onChange('label', trimmed);
+    } else {
+      setLocalLabel(data.label || '');
+    }
   };
 
   const handleCategoryChange = (newCategory: string) => {
@@ -512,13 +547,31 @@ function TableProperties({
     return { commonCategory, uniqueCategories };
   }, [data.id, data.seatIds, data.category, engine]);
 
+  const labelError = isEmpty
+    ? 'Label cannot be empty'
+    : isDuplicate
+      ? 'Label already in use'
+      : undefined;
+
   return (
     <>
       <TextField
         label="Label"
         fullWidth
-        value={data.label || ''}
-        onChange={(e) => handleLabelChange(e.target.value)}
+        inputRef={inputRef}
+        value={localLabel}
+        onChange={(e) => setLocalLabel(e.target.value)}
+        onFocus={() => inputRef.current?.select()}
+        onBlur={handleLabelBlur}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            handleLabelBlur();
+            inputRef.current?.blur();
+          }
+        }}
+        helperText={labelError}
+        error={isEmpty || isDuplicate}
         sx={{ mb: 2 }}
       />
       <FormControl fullWidth sx={{ mb: 2 }}>
