@@ -300,6 +300,13 @@ function RowProperties({
         onChange={(e) => setLocalLabel(e.target.value)}
         onFocus={() => inputRef.current?.select()}
         onBlur={handleLabelBlur}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            handleLabelBlur();
+            inputRef.current?.blur();
+          }
+        }}
         helperText={localLabel.trim().length === 0 ? 'Label cannot be empty' : undefined}
         error={localLabel.trim().length === 0}
         sx={{ mb: 2 }}
@@ -444,6 +451,13 @@ function AreaProperties({ data, onChange, engine }: { data: Area; onChange: (fie
         onChange={(e) => setLocalLabel(e.target.value)}
         onFocus={() => inputRef.current?.select()}
         onBlur={handleBlur}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            handleBlur();
+            inputRef.current?.blur();
+          }
+        }}
         helperText={localLabel.trim().length === 0 ? 'Label cannot be empty' : undefined}
         error={localLabel.trim().length === 0}
         sx={{ mb: 2 }}
