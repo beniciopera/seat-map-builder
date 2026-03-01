@@ -5,7 +5,10 @@ import { useEngine } from '@/src/ui/hooks/useEngine';
 import type { Seat, Row, Area, Table, SeatCategory, SeatOrderDirection, ElementId } from '@/src/domain/types';
 import { UpdatePropertiesCommand } from '@/src/engine/commands/UpdatePropertiesCommand';
 import { ChangeCategoryCommand } from '@/src/engine/commands/ChangeCategoryCommand';
+import { ChangeTableSeatCountCommand } from '@/src/engine/commands/ChangeTableSeatCountCommand';
+import { CompoundCommand } from '@/src/engine/commands/CompoundCommand';
 import { categoryColor } from '@/src/utils/color';
+import { MIN_SEATS_PER_TABLE, MAX_SEATS_PER_TABLE } from '@/src/domain/constraints';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 const CATEGORY_OPTIONS: { value: SeatCategory; label: string }[] = [
@@ -92,7 +95,25 @@ export function PropertiesPanel() {
     const commonCategory = categories.size === 1 ? [...categories][0] : '';
     const uniqueCategories = [...categories] as SeatCategory[];
 
-    return { elements, commonCategory, uniqueCategories };
+    // Detect if all top-level selected elements are tables
+    const topLevelElements = elements.filter((el) => {
+      if (el!.type === 'seat') {
+        const seat = el as unknown as Seat;
+        if (seat.tableId && tableIds.has(seat.tableId)) return false;
+        if (seat.rowId && rowIds.has(seat.rowId)) return false;
+      }
+      return true;
+    });
+    const allTables = topLevelElements.length > 0 && topLevelElements.every((el) => el!.type === 'table');
+    let commonSeatCount: number | null = null;
+    let tableElements: Table[] = [];
+    if (allTables) {
+      tableElements = topLevelElements.map((el) => el as unknown as Table);
+      const seatCounts = new Set(tableElements.map((t) => t.seatCount));
+      commonSeatCount = seatCounts.size === 1 ? [...seatCounts][0] : null;
+    }
+
+    return { elements, commonCategory, uniqueCategories, allTables, commonSeatCount, tableElements };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedElementData, selectionCount, selectedIds, engine, bulkVersion]);
 
@@ -146,6 +167,14 @@ export function PropertiesPanel() {
               {renderCategoryMenuItems()}
             </Select>
           </FormControl>
+          {multiSelectInfo.allTables && (
+            <BulkSeatCountField
+              commonSeatCount={multiSelectInfo.commonSeatCount}
+              tables={multiSelectInfo.tableElements}
+              engine={engine}
+              onDone={() => setBulkVersion((v) => v + 1)}
+            />
+          )}
         </Box>
       );
     }
@@ -474,6 +503,64 @@ function AreaProperties({ data, onChange, engine }: { data: Area; onChange: (fie
   );
 }
 
+function BulkSeatCountField({
+  commonSeatCount,
+  tables,
+  engine,
+  onDone,
+}: {
+  commonSeatCount: number | null;
+  tables: Table[];
+  engine: ReturnType<typeof useEngine>;
+  onDone: () => void;
+}) {
+  const [localValue, setLocalValue] = useState(commonSeatCount != null ? String(commonSeatCount) : '');
+
+  useEffect(() => {
+    setLocalValue(commonSeatCount != null ? String(commonSeatCount) : '');
+  }, [commonSeatCount]);
+
+  const handleCommit = () => {
+    const parsed = parseInt(localValue, 10);
+    if (Number.isNaN(parsed)) {
+      setLocalValue(commonSeatCount != null ? String(commonSeatCount) : '');
+      return;
+    }
+    const clamped = Math.max(MIN_SEATS_PER_TABLE, Math.min(MAX_SEATS_PER_TABLE, parsed));
+    setLocalValue(String(clamped));
+    const commands = tables
+      .filter((t) => t.seatCount !== clamped)
+      .map((t) => new ChangeTableSeatCountCommand(engine, t.id, clamped));
+    if (commands.length > 0) {
+      const cmd = commands.length === 1
+        ? commands[0]
+        : new CompoundCommand('Change Table Seat Counts', commands);
+      engine.history.execute(cmd);
+      onDone();
+    }
+  };
+
+  return (
+    <TextField
+      label="Seats"
+      type="number"
+      fullWidth
+      value={localValue}
+      placeholder={commonSeatCount == null ? 'Mixed' : undefined}
+      onChange={(e) => setLocalValue(e.target.value)}
+      onBlur={handleCommit}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          (e.target as HTMLInputElement).blur();
+        }
+      }}
+      inputProps={{ min: MIN_SEATS_PER_TABLE, max: MAX_SEATS_PER_TABLE }}
+      sx={{ mb: 2 }}
+    />
+  );
+}
+
 function TableProperties({
   data,
   onChange,
@@ -484,6 +571,7 @@ function TableProperties({
   engine: ReturnType<typeof useEngine>;
 }) {
   const [localLabel, setLocalLabel] = useState(data.label || '');
+  const [localSeatCount, setLocalSeatCount] = useState(String(data.seatCount || 0));
   const inputRef = useRef<HTMLInputElement>(null);
   const localLabelRef = useRef(localLabel);
   localLabelRef.current = localLabel;
@@ -491,6 +579,10 @@ function TableProperties({
   useEffect(() => {
     setLocalLabel(data.label || '');
   }, [data.label]);
+
+  useEffect(() => {
+    setLocalSeatCount(String(data.seatCount || 0));
+  }, [data.seatCount]);
 
   // Commit pending valid label on unmount
   useEffect(() => {
@@ -606,9 +698,34 @@ function TableProperties({
           {renderCategoryMenuItems()}
         </Select>
       </FormControl>
-      <Typography variant="body2" color="text.secondary">
-        Seats: {data.seatCount || 0}
-      </Typography>
+      <TextField
+        label="Seats"
+        type="number"
+        fullWidth
+        value={localSeatCount}
+        onChange={(e) => setLocalSeatCount(e.target.value)}
+        onBlur={() => {
+          const parsed = parseInt(localSeatCount, 10);
+          if (Number.isNaN(parsed)) {
+            setLocalSeatCount(String(data.seatCount || 0));
+            return;
+          }
+          const clamped = Math.max(MIN_SEATS_PER_TABLE, Math.min(MAX_SEATS_PER_TABLE, parsed));
+          setLocalSeatCount(String(clamped));
+          if (clamped !== data.seatCount) {
+            const cmd = new ChangeTableSeatCountCommand(engine, data.id, clamped);
+            engine.history.execute(cmd);
+          }
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            (e.target as HTMLInputElement).blur();
+          }
+        }}
+        inputProps={{ min: MIN_SEATS_PER_TABLE, max: MAX_SEATS_PER_TABLE }}
+        sx={{ mb: 2 }}
+      />
     </>
   );
 }

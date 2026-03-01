@@ -259,6 +259,8 @@ export class SelectionLayer {
       let primaryEl = engine.state.get(selectedIds[0]);
       if (primaryEl && isSeat(primaryEl) && primaryEl.rowId && selectedRowIds.size === 1) {
         primaryEl = engine.state.get(selectedRowIds.values().next().value as ElementId);
+      } else if (primaryEl && isSeat(primaryEl) && primaryEl.tableId) {
+        primaryEl = engine.state.get(primaryEl.tableId) ?? primaryEl;
       }
       if (primaryEl) {
         this.showRotationHandle(primaryEl, engine);

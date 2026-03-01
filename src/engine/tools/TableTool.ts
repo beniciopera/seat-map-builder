@@ -4,7 +4,7 @@ import type { Point } from '@/src/domain/geometry';
 import type { Table, Seat } from '@/src/domain/types';
 import { generateElementId } from '@/src/domain/ids';
 import { DEFAULT_TRANSFORM } from '@/src/domain/geometry';
-import { DEFAULT_SEAT_RADIUS, DEFAULT_TABLE_RADIUS, DEFAULT_TABLE_SEAT_GAP } from '@/src/domain/constraints';
+import { DEFAULT_SEAT_RADIUS, DEFAULT_TABLE_RADIUS, DEFAULT_TABLE_SEAT_GAP, DEFAULT_SEATS_PER_TABLE } from '@/src/domain/constraints';
 import { CreateTableCommand } from '../commands/CreateTableCommand';
 
 export class TableTool extends BaseTool {
@@ -14,7 +14,7 @@ export class TableTool extends BaseTool {
   readonly cursor = 'crosshair';
 
   private tableCounter = 0;
-  private seatCount = 8;
+  private seatCount = DEFAULT_SEATS_PER_TABLE;
   private tableRadius = DEFAULT_TABLE_RADIUS;
 
   onPointerDown(event: EditorInputEvent): void {

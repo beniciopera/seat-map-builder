@@ -8,6 +8,9 @@ export const DEFAULT_SEAT_RADIUS = 12;
 export const DEFAULT_SEAT_SPACING = 14;
 export const DEFAULT_TABLE_RADIUS = 32;
 export const DEFAULT_TABLE_SEAT_GAP = 4;
+export const MIN_SEATS_PER_TABLE = 1;
+export const MAX_SEATS_PER_TABLE = 8;
+export const DEFAULT_SEATS_PER_TABLE = 6;
 export const CURVATURE_EPSILON = 3; // abs(sagitta) below this snaps to perfectly straight
 
 /**
