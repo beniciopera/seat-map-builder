@@ -9,6 +9,7 @@ import {
   Typography,
   Box,
   Tooltip,
+  SvgIcon,
 } from '@mui/material';
 import NearMeIcon from '@mui/icons-material/NearMe';
 import EventSeatIcon from '@mui/icons-material/EventSeat';
@@ -16,7 +17,6 @@ import CropFreeIcon from '@mui/icons-material/CropFree';
 import TableRestaurantIcon from '@mui/icons-material/TableRestaurant';
 import PanToolIcon from '@mui/icons-material/PanTool';
 import GridViewIcon from '@mui/icons-material/GridView';
-import ColorizeIcon from '@mui/icons-material/Colorize';
 import UndoIcon from '@mui/icons-material/Undo';
 import RedoIcon from '@mui/icons-material/Redo';
 import ZoomInIcon from '@mui/icons-material/ZoomIn';
@@ -25,6 +25,20 @@ import FitScreenIcon from '@mui/icons-material/FitScreen';
 import { useEngine } from '@/src/ui/hooks/useEngine';
 import { useEditorStore } from '@/src/store/useEditorStore';
 import { ViewportController } from '@/src/renderer/viewport/ViewportController';
+
+function SeatPickerIcon(props: React.ComponentProps<typeof SvgIcon>) {
+  return (
+    <SvgIcon {...props} viewBox="0 0 128 128">
+      <g stroke="#2b2b2b" strokeWidth="4" fill="none" strokeLinecap="round">
+        <circle cx="38" cy="78" r="18" />
+        <path d="M88 22 a18 18 0 1 1 -1 0.1" />
+        <circle cx="64" cy="58" r="20" />
+      </g>
+      <circle cx="64" cy="58" r="13" fill="#2b2b2b" />
+      <path d="M72 64 L108 92 L92 94 L98 110 L88 114 L82 98 L70 108 Z" fill="#2b2b2b" />
+    </SvgIcon>
+  );
+}
 
 export function Toolbar() {
   const engine = useEngine();
@@ -58,17 +72,17 @@ export function Toolbar() {
           <ToggleButton value="seat-placement">
             <Tooltip title="Place Seats (S)"><EventSeatIcon fontSize="small" /></Tooltip>
           </ToggleButton>
-          <ToggleButton value="area">
-            <Tooltip title="Draw Area (A)"><CropFreeIcon fontSize="small" /></Tooltip>
+          <ToggleButton value="grid">
+            <Tooltip title="Grid Generator (G)"><GridViewIcon fontSize="small" /></Tooltip>
           </ToggleButton>
           <ToggleButton value="table">
             <Tooltip title="Place Table (T)"><TableRestaurantIcon fontSize="small" /></Tooltip>
           </ToggleButton>
-          <ToggleButton value="grid">
-            <Tooltip title="Grid Generator (G)"><GridViewIcon fontSize="small" /></Tooltip>
+          <ToggleButton value="area">
+            <Tooltip title="Draw Area (A)"><CropFreeIcon fontSize="small" /></Tooltip>
           </ToggleButton>
           <ToggleButton value="seat-picker">
-            <Tooltip title="Seat Picker (P)"><ColorizeIcon fontSize="small" /></Tooltip>
+            <Tooltip title="Seat Picker (P)"><SeatPickerIcon sx={{ fontSize: 28 }} /></Tooltip>
           </ToggleButton>
           <ToggleButton value="pan">
             <Tooltip title="Pan (H / Space+Drag)"><PanToolIcon fontSize="small" /></Tooltip>
