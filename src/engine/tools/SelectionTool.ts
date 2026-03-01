@@ -1742,17 +1742,34 @@ export class SelectionTool extends BaseTool {
       primaryEl = this.engine.state.get(primaryEl.tableId) ?? primaryEl;
     }
 
-    const centerX = primaryEl.transform.position.x;
-    const centerY = primaryEl.transform.position.y;
-    const rotation = primaryEl.transform.rotation;
-    const halfHeight = primaryEl.bounds.height / 2;
-    const fullOffset = -(halfHeight + 25);
-    const cos = Math.cos(rotation);
-    const sin = Math.sin(rotation);
-    const handlePos: Point = {
-      x: centerX - fullOffset * sin,
-      y: centerY + fullOffset * cos,
-    };
+    let handlePos: Point;
+
+    if (selectedIds.length > 1) {
+      // Multi-selection: handle is at top-center of global AABB
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      for (const id of selectedIds) {
+        const el = this.engine.state.get(id);
+        if (!el) continue;
+        minX = Math.min(minX, el.bounds.x);
+        minY = Math.min(minY, el.bounds.y);
+        maxX = Math.max(maxX, el.bounds.x + el.bounds.width);
+        maxY = Math.max(maxY, el.bounds.y + el.bounds.height);
+      }
+      handlePos = { x: (minX + maxX) / 2, y: minY - 25 };
+    } else {
+      // Single element: rotation-aware positioning
+      const centerX = primaryEl.transform.position.x;
+      const centerY = primaryEl.transform.position.y;
+      const rotation = primaryEl.transform.rotation;
+      const halfHeight = primaryEl.bounds.height / 2;
+      const fullOffset = -(halfHeight + 25);
+      const cos = Math.cos(rotation);
+      const sin = Math.sin(rotation);
+      handlePos = {
+        x: centerX - fullOffset * sin,
+        y: centerY + fullOffset * cos,
+      };
+    }
 
     return distance(point, handlePos) < 10;
   }
@@ -1793,7 +1810,22 @@ export class SelectionTool extends BaseTool {
     }
 
     this.rotationPrimaryId = primaryEl.id;
-    this.rotationCenter = primaryEl.transform.position;
+
+    // For multi-selection, use the centroid of the global AABB as rotation center
+    if (selectedIds.length > 1) {
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      for (const id of selectedIds) {
+        const el = this.engine.state.get(id);
+        if (!el) continue;
+        minX = Math.min(minX, el.bounds.x);
+        minY = Math.min(minY, el.bounds.y);
+        maxX = Math.max(maxX, el.bounds.x + el.bounds.width);
+        maxY = Math.max(maxY, el.bounds.y + el.bounds.height);
+      }
+      this.rotationCenter = { x: (minX + maxX) / 2, y: (minY + maxY) / 2 };
+    } else {
+      this.rotationCenter = primaryEl.transform.position;
+    }
 
     // Collect all IDs that should rotate
     const allIds = new Set<ElementId>(selectedIds);

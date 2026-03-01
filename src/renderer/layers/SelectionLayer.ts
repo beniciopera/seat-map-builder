@@ -32,6 +32,8 @@ export class SelectionLayer {
   // Rotation handle
   private rotationHandle: Konva.Circle | null = null;
   rotationHandlePosition: Point | null = null;
+  private multiRotationOrigin: { handlePos: Point; center: Point } | null = null;
+  private multiRotationOriginRotation: number | null = null;
 
   // Resize handles (area corners)
   private resizeHandles: Konva.Rect[] = [];
@@ -94,6 +96,8 @@ export class SelectionLayer {
       if (this.groupBoundingBox) {
         this.groupBoundingBox.visible(false);
       }
+      this.multiRotationOrigin = null;
+      this.multiRotationOriginRotation = null;
       this.previousSelectedIds = [];
       this.layer.batchDraw();
       return;
@@ -254,17 +258,55 @@ export class SelectionLayer {
       }
     }
 
-    // 6. Show rotation handle for single element selection
+    // 6. Show rotation handle
     if (selectedIds.length >= 1 && !isSeatPicker) {
-      // Find the "primary" element (skip seats that belong to rows if a row is also selected)
-      let primaryEl = engine.state.get(selectedIds[0]);
-      if (primaryEl && isSeat(primaryEl) && primaryEl.rowId && selectedRowIds.size === 1) {
-        primaryEl = engine.state.get(selectedRowIds.values().next().value as ElementId);
-      } else if (primaryEl && isSeat(primaryEl) && primaryEl.tableId) {
-        primaryEl = engine.state.get(primaryEl.tableId) ?? primaryEl;
-      }
-      if (primaryEl) {
-        this.showRotationHandle(primaryEl, engine);
+      if (selectedIds.length === 1) {
+        // Single element: use rotation-aware positioning on the primary element
+        let primaryEl = engine.state.get(selectedIds[0]);
+        if (primaryEl && isSeat(primaryEl) && primaryEl.rowId && selectedRowIds.size === 1) {
+          primaryEl = engine.state.get(selectedRowIds.values().next().value as ElementId);
+        } else if (primaryEl && isSeat(primaryEl) && primaryEl.tableId) {
+          primaryEl = engine.state.get(primaryEl.tableId) ?? primaryEl;
+        }
+        if (primaryEl) {
+          this.showRotationHandle(primaryEl, engine);
+        }
+      } else {
+        // Multi-selection: position handle at top-center of global AABB
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        for (const id of selectedIds) {
+          const el = engine.state.get(id);
+          if (!el) continue;
+          minX = Math.min(minX, el.bounds.x);
+          minY = Math.min(minY, el.bounds.y);
+          maxX = Math.max(maxX, el.bounds.x + el.bounds.width);
+          maxY = Math.max(maxY, el.bounds.y + el.bounds.height);
+        }
+
+        if (toolState === 'rotating' && this.multiRotationOrigin) {
+          // During rotation: rotate the stored original handle position around the center
+          const orig = this.multiRotationOrigin;
+          // Derive current rotation delta from any selected element's transform change
+          const firstEl = engine.state.get(selectedIds[0]);
+          const rotationDelta = firstEl ? firstEl.transform.rotation - (this.multiRotationOriginRotation ?? firstEl.transform.rotation) : 0;
+          const cos = Math.cos(rotationDelta);
+          const sin = Math.sin(rotationDelta);
+          const dx = orig.handlePos.x - orig.center.x;
+          const dy = orig.handlePos.y - orig.center.y;
+          const handleX = orig.center.x + dx * cos - dy * sin;
+          const handleY = orig.center.y + dx * sin + dy * cos;
+          this.showRotationHandleAtPosition(handleX, handleY);
+        } else {
+          // Not rotating: position at AABB top-center and store for future rotation
+          const handleX = (minX + maxX) / 2;
+          const handleY = minY - 25;
+          const center = { x: (minX + maxX) / 2, y: (minY + maxY) / 2 };
+          this.multiRotationOrigin = { handlePos: { x: handleX, y: handleY }, center };
+          // Store original rotation of first element to compute deltas later
+          const firstEl = engine.state.get(selectedIds[0]);
+          this.multiRotationOriginRotation = firstEl ? firstEl.transform.rotation : 0;
+          this.showRotationHandleAtPosition(handleX, handleY);
+        }
       }
     }
 
@@ -572,6 +614,28 @@ export class SelectionLayer {
     return this.rotationHandlePosition;
   }
 
+  private showRotationHandleAtPosition(x: number, y: number): void {
+    this.rotationHandlePosition = { x, y };
+
+    this.rotationHandle = new Konva.Circle({
+      x,
+      y,
+      radius: 6,
+      fill: 'rgba(76, 175, 80, 0.6)',
+      stroke: 'rgba(76, 175, 80, 1)',
+      strokeWidth: 1.5,
+      listening: true,
+    });
+    this.rotationHandle.on('mouseenter', () => {
+      document.body.style.cursor = darkCursor('crosshair');
+    });
+    this.rotationHandle.on('mouseleave', () => {
+      document.body.style.cursor = darkCursor('default');
+    });
+
+    this.layer.add(this.rotationHandle);
+  }
+
   private showRotationHandle(element: import('@/src/domain/types').MapElement, _engine: EditorEngine): void {
     const centerX = element.transform.position.x;
     const centerY = element.transform.position.y;
@@ -721,6 +785,8 @@ export class SelectionLayer {
     }
     this.rowShadows.clear();
     this.clearHandles();
+    this.multiRotationOrigin = null;
+    this.multiRotationOriginRotation = null;
     this.previousSelectedIds = [];
     this.hideBoxSelect();
     this.layer.batchDraw();

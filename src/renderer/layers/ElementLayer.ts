@@ -47,21 +47,16 @@ export class ElementLayer {
 
     if (seats.length === 0) return undefined;
 
-    // Always place label at the leftmost seat (smallest x, then smallest y for ties)
-    let leftmost = seats[0];
-    let rightmost = seats[0];
-    for (const s of seats) {
-      const lp = leftmost.transform.position;
-      const rp = rightmost.transform.position;
-      const sp = s.transform.position;
-      if (sp.x < lp.x || (sp.x === lp.x && sp.y < lp.y)) leftmost = s;
-      if (sp.x > rp.x || (sp.x === rp.x && sp.y > rp.y)) rightmost = s;
-    }
+    // Use the first and last seats in the row's sequence order.
+    // This ensures the label follows the row's left extreme after rotation,
+    // rather than relying on global x-coordinate which breaks when rotated.
+    const first = seats[0];
+    const last = seats[seats.length - 1];
 
     return {
-      firstSeatPos: leftmost.transform.position,
-      lastSeatPos: seats.length >= 2 ? rightmost.transform.position : null,
-      seatRadius: leftmost.radius,
+      firstSeatPos: first.transform.position,
+      lastSeatPos: seats.length >= 2 ? last.transform.position : null,
+      seatRadius: first.radius,
     };
   }
 

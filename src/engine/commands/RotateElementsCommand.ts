@@ -3,7 +3,6 @@ import type { ElementId, MapElement, CurveDefinition } from '@/src/domain/types'
 import { isRow } from '@/src/domain/types';
 import type { Point, Rect } from '@/src/domain/geometry';
 import type { EditorEngine } from '../EditorEngine';
-import { snapAngleDeg, radToDeg, degToRad } from '@/src/utils/math';
 
 interface SavedTransform {
   position: Point;
@@ -86,14 +85,14 @@ export class RotateElementsCommand implements Command {
         y: this.center.y + dx * sin + dy * cos,
       };
 
-      const normalizedRotation = degToRad(snapAngleDeg(radToDeg(el.transform.rotation + angle)));
+      const newRotation = el.transform.rotation + angle;
 
       let merged = {
         ...el,
         transform: {
           ...el.transform,
           position: newPos,
-          rotation: normalizedRotation,
+          rotation: newRotation,
         },
         bounds: {
           ...el.bounds,
@@ -103,7 +102,7 @@ export class RotateElementsCommand implements Command {
       } as MapElement;
 
       if (isRow(merged)) {
-        const normalizedOrientation = degToRad(snapAngleDeg(radToDeg(merged.orientationAngle + angle)));
+        const newOrientation = merged.orientationAngle + angle;
         let curveDefinition = merged.curveDefinition;
         if (curveDefinition) {
           const cdx = curveDefinition.center.x - this.center.x;
@@ -117,7 +116,7 @@ export class RotateElementsCommand implements Command {
             angle: curveDefinition.angle + angle,
           };
         }
-        merged = { ...merged, orientationAngle: normalizedOrientation, curveDefinition } as MapElement;
+        merged = { ...merged, orientationAngle: newOrientation, curveDefinition } as MapElement;
       }
 
       this.engine.state.set(id, merged);
