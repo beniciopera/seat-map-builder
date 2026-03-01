@@ -2,7 +2,7 @@ import type { ElementId, Seat, Row, MapElement } from '@/src/domain/types';
 import type { Point } from '@/src/domain/geometry';
 import type { EditorEngine } from '../EditorEngine';
 import { generateElementId } from '@/src/domain/ids';
-import { rowLabelFromIndex, propagateRowLabel } from '@/src/domain/labels';
+import { rowLabelFromIndex, propagateRowLabel, seatNumberFromLabel } from '@/src/domain/labels';
 import { angleBetween, distance } from '@/src/utils/math';
 import { DEFAULT_TRANSFORM } from '@/src/domain/geometry';
 
@@ -141,12 +141,30 @@ export class RowGroupingSystem {
         if (a.id === changedRowId && b.id !== changedRowId) return 1;
         if (b.id === changedRowId && a.id !== changedRowId) return -1;
       }
+      // Sort by current minimum seat number to preserve established order.
+      // This prevents existing rows from being reordered when a new row
+      // joins the label group.
+      const aMin = this.getMinSeatNumber(a);
+      const bMin = this.getMinSeatNumber(b);
+      if (aMin !== bMin) return aMin - bMin;
+      // Fallback to spatial sort for rows with same or no seat numbers
       const dy = a.transform.position.y - b.transform.position.y;
       if (Math.abs(dy) > 1) return dy;
       return a.transform.position.x - b.transform.position.x;
     });
 
     return rows;
+  }
+
+  private getMinSeatNumber(row: Row): number {
+    for (const seatId of row.seatIds) {
+      const seat = this.engine.state.get(seatId);
+      if (seat && seat.type === 'seat') {
+        const num = seatNumberFromLabel((seat as Seat).label);
+        if (num !== null) return num;
+      }
+    }
+    return Infinity;
   }
 
   reorderSeats(row: Row): ElementId[] {

@@ -1,7 +1,7 @@
 import { BaseTool } from './Tool';
 import type { EditorInputEvent } from '../input/InputEvent';
 import type { Point } from '@/src/domain/geometry';
-import { angleBetween } from '@/src/utils/math';
+import { angleBetween, snapAngleRad, distance } from '@/src/utils/math';
 
 export class SeatPlacementTool extends BaseTool {
   readonly id = 'seat-placement';
@@ -109,9 +109,18 @@ export class SeatPlacementTool extends BaseTool {
       this.engine.guidelines.clear();
     }
 
+    // Snap the drag angle to clean integer degrees (hard snap near key angles)
+    const rawAngle = angleBetween(this.anchorPoint, endPoint);
+    const snappedAngle = snapAngleRad(rawAngle);
+    const dist = distance(this.anchorPoint, endPoint);
+    const snappedEndPoint: Point = {
+      x: this.anchorPoint.x + Math.cos(snappedAngle) * dist,
+      y: this.anchorPoint.y + Math.sin(snappedAngle) * dist,
+    };
+
     const seats = this.engine.seatGeneration.generateAlongLine(
       this.anchorPoint,
-      endPoint,
+      snappedEndPoint,
       this.spacing,
     );
     this.previewPositions = seats;
@@ -120,7 +129,7 @@ export class SeatPlacementTool extends BaseTool {
       seats,
       anchorPoint: this.anchorPoint,
       cursorPoint: endPoint,
-      angle: angleBetween(this.anchorPoint, endPoint),
+      angle: snappedAngle,
       seatCount: seats.length,
     });
   }

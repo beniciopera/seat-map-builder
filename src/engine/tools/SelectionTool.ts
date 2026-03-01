@@ -45,6 +45,7 @@ export class SelectionTool extends BaseTool {
   private rotationCenter: Point | null = null;
   private rotationStartAngle = 0;
   private rotationOriginalTransforms = new Map<ElementId, { position: Point; rotation: number }>();
+  private isMultiEntityRotation = false;
 
   // Area resize state
   private resizingAreaId: ElementId | null = null;
@@ -202,7 +203,7 @@ export class SelectionTool extends BaseTool {
 
         this.engine.events.emit('preview:rotation', {
           cursorPoint: event.worldPoint,
-          angle: snappedAbsoluteRad,
+          angle: this.isMultiEntityRotation ? snappedDelta : snappedAbsoluteRad,
         });
 
         // Preview rotation (restore originals first, then apply new rotation)
@@ -1775,6 +1776,14 @@ export class SelectionTool extends BaseTool {
   }
 
   private computeSnappedDelta(rawDeltaAngle: number): { snappedDelta: number; snappedAbsoluteRad: number } {
+    if (this.isMultiEntityRotation) {
+      // For multi-selection, rotation starts from 0° and represents a pure delta
+      const deltaDeg = radToDeg(rawDeltaAngle);
+      const snappedDeg = snapAngleDeg(deltaDeg);
+      const snappedDelta = degToRad(snappedDeg);
+      return { snappedDelta, snappedAbsoluteRad: snappedDelta };
+    }
+
     const primaryId = this.rotationPrimaryId ?? this.rotatingIds[0];
     const orig = this.rotationOriginalTransforms.get(primaryId);
     const originalRotation = orig ? orig.rotation : 0;
@@ -1810,6 +1819,17 @@ export class SelectionTool extends BaseTool {
     }
 
     this.rotationPrimaryId = primaryEl.id;
+
+    // Determine if this is a true multi-entity rotation (multiple distinct top-level entities)
+    const topLevelEntities = new Set<ElementId>();
+    for (const id of selectedIds) {
+      const el = this.engine.state.get(id);
+      if (!el) continue;
+      if (isSeat(el) && el.rowId) topLevelEntities.add(el.rowId);
+      else if (isSeat(el) && el.tableId) topLevelEntities.add(el.tableId);
+      else topLevelEntities.add(el.id);
+    }
+    this.isMultiEntityRotation = topLevelEntities.size > 1;
 
     // For multi-selection, use the centroid of the global AABB as rotation center
     if (selectedIds.length > 1) {

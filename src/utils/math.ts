@@ -53,13 +53,20 @@ export function snapAngleDeg(angleDeg: number, hardThreshold = 5): number {
   let a = angleDeg % 360;
   if (a < 0) a += 360;
 
-  const cardinals = [0, 90, 180, 270, 360];
+  const cardinals = [0, 45, 90, 135, 180, 225, 270, 315, 360];
   for (const c of cardinals) {
     if (Math.abs(a - c) <= hardThreshold) {
       return c === 360 ? 0 : c;
     }
   }
   return Math.round(a);
+}
+
+/**
+ * Snap an angle in radians: delegates to snapAngleDeg after converting.
+ */
+export function snapAngleRad(angleRad: number, hardThreshold = 5): number {
+  return degToRad(snapAngleDeg(radToDeg(angleRad), hardThreshold));
 }
 
 // ── Parabolic curve functions ──────────────────────────────────────────

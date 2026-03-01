@@ -1,7 +1,7 @@
 import { BaseTool } from './Tool';
 import type { EditorInputEvent } from '../input/InputEvent';
 import type { Point } from '@/src/domain/geometry';
-import { angleBetween } from '@/src/utils/math';
+import { angleBetween, snapAngleRad, distance } from '@/src/utils/math';
 
 interface GridResult {
   /** All seat positions, organized as a flat array (row-major: row0 seats, row1 seats, ...) */
@@ -131,18 +131,24 @@ export class GridTool extends BaseTool {
       this.engine.guidelines.clear();
     }
 
-    // Use the same trigonometric generation as the final commit:
-    // x = originX + i * spacing * cos(angle)
-    // y = originY + i * spacing * sin(angle)
+    // Snap the drag angle to clean integer degrees (hard snap near key angles)
+    const rawAngle = angleBetween(this.originPoint, endPoint);
+    const snappedAngle = snapAngleRad(rawAngle);
+    const dist = distance(this.originPoint, endPoint);
+    const snappedEndPoint: Point = {
+      x: this.originPoint.x + Math.cos(snappedAngle) * dist,
+      y: this.originPoint.y + Math.sin(snappedAngle) * dist,
+    };
+
     const seats = this.engine.seatGeneration.generateAlongLine(
       this.originPoint,
-      endPoint,
+      snappedEndPoint,
       this.spacing,
     );
 
     this.firstRowPositions = seats;
     this.seatCount = seats.length;
-    this.rowAngle = angleBetween(this.originPoint, endPoint);
+    this.rowAngle = snappedAngle;
 
     this.engine.events.emit('preview:grid', {
       seats,
