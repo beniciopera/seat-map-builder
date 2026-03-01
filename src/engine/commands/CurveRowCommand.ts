@@ -97,6 +97,7 @@ export class CurveRowCommand implements Command {
       transform: {
         ...row.transform,
         position: { x: (minX + maxX) / 2, y: (minY + maxY) / 2 },
+        rotation: orientationAngle,
       },
       bounds: {
         x: minX,

@@ -3,6 +3,7 @@ import type { ElementId, MapElement } from '@/src/domain/types';
 import { isRow } from '@/src/domain/types';
 import type { Point, Rect } from '@/src/domain/geometry';
 import type { EditorEngine } from '../EditorEngine';
+import { snapAngleDeg, radToDeg, degToRad } from '@/src/utils/math';
 
 interface SavedTransform {
   position: Point;
@@ -83,12 +84,14 @@ export class RotateElementsCommand implements Command {
         y: this.center.y + dx * sin + dy * cos,
       };
 
+      const normalizedRotation = degToRad(snapAngleDeg(radToDeg(el.transform.rotation + angle)));
+
       let merged = {
         ...el,
         transform: {
           ...el.transform,
           position: newPos,
-          rotation: el.transform.rotation + angle,
+          rotation: normalizedRotation,
         },
         bounds: {
           ...el.bounds,
@@ -98,7 +101,8 @@ export class RotateElementsCommand implements Command {
       } as MapElement;
 
       if (isRow(merged)) {
-        merged = { ...merged, orientationAngle: merged.orientationAngle + angle } as MapElement;
+        const normalizedOrientation = degToRad(snapAngleDeg(radToDeg(merged.orientationAngle + angle)));
+        merged = { ...merged, orientationAngle: normalizedOrientation } as MapElement;
       }
 
       this.engine.state.set(id, merged);

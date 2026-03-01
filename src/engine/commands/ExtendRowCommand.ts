@@ -131,6 +131,7 @@ export class ExtendRowCommand implements Command {
       transform: {
         ...row.transform,
         position: { x: midX, y: midY },
+        rotation: orientationAngle,
       },
       bounds: {
         x: minX,

@@ -10,7 +10,7 @@ import { ContractRowCommand } from '../commands/ContractRowCommand';
 import { CurveRowCommand } from '../commands/CurveRowCommand';
 import { RotateElementsCommand } from '../commands/RotateElementsCommand';
 import { ResizeElementCommand } from '../commands/ResizeElementCommand';
-import { distance, angleBetween, parabolaPositions, parabolaTangentLocal, parabolaArcLength, parabolaXAtArcLength, parabolaY } from '@/src/utils/math';
+import { distance, angleBetween, parabolaPositions, parabolaTangentLocal, parabolaArcLength, parabolaXAtArcLength, parabolaY, radToDeg, degToRad, snapAngleDeg } from '@/src/utils/math';
 import { generateElementId } from '@/src/domain/ids';
 import { DEFAULT_SEAT_RADIUS, isRowCurvatureEffectivelyStraight } from '@/src/domain/constraints';
 import type { SnapTarget, AngleSnapTarget } from '../systems/SnapEngine';
@@ -40,6 +40,7 @@ export class SelectionTool extends BaseTool {
 
   // Rotation handle state
   private rotatingIds: ElementId[] = [];
+  private rotationPrimaryId: ElementId | null = null;
   private rotationCenter: Point | null = null;
   private rotationStartAngle = 0;
   private rotationOriginalTransforms = new Map<ElementId, { position: Point; rotation: number }>();
@@ -185,29 +186,17 @@ export class SelectionTool extends BaseTool {
           event.worldPoint.y - this.rotationCenter.y,
           event.worldPoint.x - this.rotationCenter.x,
         );
-        const deltaAngle = currentAngle - this.rotationStartAngle;
-
-        // Compute absolute angle for tooltip display
-        let absoluteAngle = deltaAngle;
-        const primaryId = this.rotatingIds[0];
-        const primaryEl = this.engine.state.get(primaryId);
-        if (primaryEl && isRow(primaryEl)) {
-          absoluteAngle = primaryEl.orientationAngle + deltaAngle;
-        } else {
-          const orig = this.rotationOriginalTransforms.get(primaryId);
-          if (orig) {
-            absoluteAngle = orig.rotation + deltaAngle;
-          }
-        }
+        const rawDelta = currentAngle - this.rotationStartAngle;
+        const { snappedDelta, snappedAbsoluteRad } = this.computeSnappedDelta(rawDelta);
 
         this.engine.events.emit('preview:rotation', {
           cursorPoint: event.worldPoint,
-          angle: absoluteAngle,
+          angle: snappedAbsoluteRad,
         });
 
         // Preview rotation (restore originals first, then apply new rotation)
-        const cos = Math.cos(deltaAngle);
-        const sin = Math.sin(deltaAngle);
+        const cos = Math.cos(snappedDelta);
+        const sin = Math.sin(snappedDelta);
         const updated: MapElement[] = [];
         for (const id of this.rotatingIds) {
           const orig = this.rotationOriginalTransforms.get(id);
@@ -224,7 +213,7 @@ export class SelectionTool extends BaseTool {
             transform: {
               ...el.transform,
               position: newPos,
-              rotation: orig.rotation + deltaAngle,
+              rotation: orig.rotation + snappedDelta,
             },
             bounds: {
               ...el.bounds,
@@ -559,7 +548,8 @@ export class SelectionTool extends BaseTool {
           event.worldPoint.y - this.rotationCenter.y,
           event.worldPoint.x - this.rotationCenter.x,
         );
-        const deltaAngle = finalAngle - this.rotationStartAngle;
+        const rawDelta = finalAngle - this.rotationStartAngle;
+        const { snappedDelta } = this.computeSnappedDelta(rawDelta);
 
         // Restore original transforms before creating command
         for (const id of this.rotatingIds) {
@@ -574,11 +564,11 @@ export class SelectionTool extends BaseTool {
           this.engine.spatialIndex.update(restored);
         }
 
-        if (Math.abs(deltaAngle) > 0.01) {
+        if (Math.abs(snappedDelta) > 0.001) {
           const cmd = new RotateElementsCommand(
             this.engine,
             this.rotatingIds,
-            deltaAngle,
+            snappedDelta,
             this.rotationCenter,
           );
           this.engine.history.execute(cmd);
@@ -949,6 +939,7 @@ export class SelectionTool extends BaseTool {
     this.curveDragStart = null;
     this.curveOriginalPositions.clear();
     this.rotatingIds = [];
+    this.rotationPrimaryId = null;
     this.rotationCenter = null;
     this.rotationOriginalTransforms.clear();
     this.resizingAreaId = null;
@@ -1064,6 +1055,7 @@ export class SelectionTool extends BaseTool {
     this.curveDragStart = null;
     this.curveOriginalPositions.clear();
     this.rotatingIds = [];
+    this.rotationPrimaryId = null;
     this.rotationCenter = null;
     this.rotationOriginalTransforms.clear();
     this.resizingAreaId = null;
@@ -1719,6 +1711,17 @@ export class SelectionTool extends BaseTool {
     return distance(point, handlePos) < 10;
   }
 
+  private computeSnappedDelta(rawDeltaAngle: number): { snappedDelta: number; snappedAbsoluteRad: number } {
+    const primaryId = this.rotationPrimaryId ?? this.rotatingIds[0];
+    const orig = this.rotationOriginalTransforms.get(primaryId);
+    const originalRotation = orig ? orig.rotation : 0;
+    const absoluteDeg = radToDeg(originalRotation + rawDeltaAngle);
+    const snappedDeg = snapAngleDeg(absoluteDeg);
+    const snappedAbsoluteRad = degToRad(snappedDeg);
+    const snappedDelta = snappedAbsoluteRad - originalRotation;
+    return { snappedDelta, snappedAbsoluteRad };
+  }
+
   private setupRotation(startPoint: Point): void {
     if (!this.engine) return;
 
@@ -1743,6 +1746,7 @@ export class SelectionTool extends BaseTool {
       primaryEl = this.engine.state.get(primaryEl.tableId) ?? primaryEl;
     }
 
+    this.rotationPrimaryId = primaryEl.id;
     this.rotationCenter = primaryEl.transform.position;
 
     // Collect all IDs that should rotate

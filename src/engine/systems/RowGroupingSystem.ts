@@ -51,6 +51,7 @@ export class RowGroupingSystem {
       transform: {
         ...DEFAULT_TRANSFORM,
         position: { x: (minX + maxX) / 2, y: (minY + maxY) / 2 },
+        rotation: orientationAngle,
       },
       bounds: {
         x: minX,

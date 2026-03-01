@@ -36,6 +36,31 @@ export function pointScale(p: Point, s: number): Point {
   return { x: p.x * s, y: p.y * s };
 }
 
+export function degToRad(deg: number): number {
+  return (deg * Math.PI) / 180;
+}
+
+export function radToDeg(rad: number): number {
+  return (rad * 180) / Math.PI;
+}
+
+/**
+ * Snap an angle in degrees: hard-snap to 0/90/180/270 within threshold,
+ * otherwise round to nearest integer. Input is normalized to [0, 360).
+ */
+export function snapAngleDeg(angleDeg: number, hardThreshold = 5): number {
+  let a = angleDeg % 360;
+  if (a < 0) a += 360;
+
+  const cardinals = [0, 90, 180, 270, 360];
+  for (const c of cardinals) {
+    if (Math.abs(a - c) <= hardThreshold) {
+      return c === 360 ? 0 : c;
+    }
+  }
+  return Math.round(a);
+}
+
 // ── Parabolic curve functions ──────────────────────────────────────────
 // Parabola: y(x) = sagitta × (1 - 4x²/chord²)  in local space
 // Origin at chord midpoint, x along chord, y perpendicular.
