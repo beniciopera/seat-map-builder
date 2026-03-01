@@ -138,3 +138,4 @@ The default layout name is `\"Untitled Map\"`, which produces `Untitled_Map.json
 ## Change
 **File:** `src/engine/state/EditorState.ts` (line 11)
 - Change `name: 'Untitled Map'` → `name: 'Seat Map'`","notes":"Changed default layout name from 'Untitled Map' to 'Seat Map' in EditorState.ts so the export filename becomes Seat_Map.json."}
+{"timestamp":"2026-03-01T00:00:00Z","tool/model":"Claude","purpose":"Bug fix","prompt":"Fix the labeling issue when creating rows using the Grid Tool where each generated row contains only one seat. Currently, when a grid creates rows composed of a single seat, those rows are not assigned a row ID or label.","notes":"Fixed two guard clauses: RowGroupingSystem.detectRow() rejected rows with <2 seats (changed to <1), and PlacementSystem.placeGrid() excluded single-seat rows from label reservation and override label assignment (changed >= 2 thresholds to >= 1). Also handled orientationAngle for single-seat rows (defaults to 0)."}

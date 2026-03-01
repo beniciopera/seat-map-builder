@@ -15,11 +15,11 @@ export class RowGroupingSystem {
   }
 
   detectRow(seatPositions: Point[], seatIds: ElementId[], overrideLabel?: string): Row | null {
-    if (seatPositions.length < 2) return null;
+    if (seatPositions.length < 1) return null;
 
     const first = seatPositions[0];
     const last = seatPositions[seatPositions.length - 1];
-    const orientationAngle = angleBetween(first, last);
+    const orientationAngle = seatPositions.length > 1 ? angleBetween(first, last) : 0;
     const spacing = seatPositions.length > 1
       ? distance(seatPositions[0], seatPositions[1])
       : 40;

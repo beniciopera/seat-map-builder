@@ -68,7 +68,7 @@ export class PlacementSystem {
   placeGrid(rowPositions: Point[][]): void {
     if (rowPositions.length === 0) return;
 
-    const rowCount = rowPositions.filter(p => p.length >= 2).length;
+    const rowCount = rowPositions.filter(p => p.length >= 1).length;
     const reservedLabels = this.engine.nextAvailableRowLabels(rowCount);
 
     const radius = DEFAULT_SEAT_RADIUS;
@@ -102,7 +102,7 @@ export class PlacementSystem {
       }));
 
       const seatIds = seats.map(s => s.id);
-      const overrideLabel = positions.length >= 2 ? reservedLabels[labelIndex] : undefined;
+      const overrideLabel = positions.length >= 1 ? reservedLabels[labelIndex] : undefined;
       const row = this.engine.rowGrouping.detectRow(positions, seatIds, overrideLabel);
 
       if (row) {
