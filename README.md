@@ -273,5 +273,5 @@ El formato de serialización usa `schemaVersion: 1` y convierte el `Map` de elem
 - Viewport culling (renderizar solo lo visto en pantalla) para mejorar performance con mapas grandes
 - Sistema de categorías/colores dinámicas configurables por el usuario
 - Copiar/pegar elementos
-- Alinear y distribuir elementos seleccionados
+- Mejoras al expandir y contraer una row con curva
 
