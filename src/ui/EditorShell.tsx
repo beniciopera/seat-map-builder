@@ -63,6 +63,11 @@ function EditorInner({ engine }: { engine: EditorEngine }) {
   const handleFileImport = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (!file.name.toLowerCase().endsWith('.json')) {
+      alert('Please select a valid .json file');
+      e.target.value = '';
+      return;
+    }
     const reader = new FileReader();
     reader.onload = () => {
       try {
