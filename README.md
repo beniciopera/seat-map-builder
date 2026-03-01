@@ -136,7 +136,7 @@ El editor incluye 7 herramientas, cada una con su propia máquina de estados int
 | **Seat**        | `S`   | Colocar asientos individuales o filas con click+drag            |
 | **Grid**        | `G`   | Generar grilla de filas×columnas con previsualización           |
 | **Table**       | `T`   | Crear mesas redondas con asientos circulares                    |
-| **Area**        | `A`   | Dibujar áreas rectangulares para agrupar filas                  |
+| **Area**        | `A`   | Dibujar áreas rectangulares                                     |
 | **Seat Picker** | `P`   | Seleccionar asientos para asignar estado/categoría              |
 | **Pan**         | `H`   | Desplazar la vista del canvas                                   |
 
@@ -273,5 +273,5 @@ El formato de serialización usa `schemaVersion: 1` y convierte el `Map` de elem
 - Viewport culling (renderizar solo lo visto en pantalla) para mejorar performance con mapas grandes
 - Sistema de categorías/colores dinámicas configurables por el usuario
 - Copiar/pegar elementos
-- Mejoras al expandir y contraer una row con curva
+
 
