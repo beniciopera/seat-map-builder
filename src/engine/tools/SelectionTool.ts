@@ -46,6 +46,7 @@ export class SelectionTool extends BaseTool {
   private rotationStartAngle = 0;
   private rotationOriginalTransforms = new Map<ElementId, { position: Point; rotation: number }>();
   private isMultiEntityRotation = false;
+  private lastRotationGuidelinesAngle: number | null = null;
 
   // Area resize state
   private resizingAreaId: ElementId | null = null;
@@ -82,6 +83,7 @@ export class SelectionTool extends BaseTool {
       this.setupRotation(event.worldPoint);
       this.transition('rotating');
       this.engine.events.emit('cursor:changed', { cursor: 'grabbing' });
+      this.updateRotationGuidelines();
       return;
     }
 
@@ -241,6 +243,8 @@ export class SelectionTool extends BaseTool {
           this.engine.events.emit('elements:updated', { elements: updated });
           this.engine.events.emit('render:request', {});
         }
+        const previewAngle = this.isMultiEntityRotation ? snappedDelta : snappedAbsoluteRad;
+        this.updateRotationGuidelines(previewAngle);
         break;
       }
       case 'dragging': {
@@ -249,33 +253,6 @@ export class SelectionTool extends BaseTool {
           x: event.worldPoint.x - this.dragStartWorld.x,
           y: event.worldPoint.y - this.dragStartWorld.y,
         };
-
-        // Show alignment guidelines (visual only, no position snapping)
-        // Probe from all selected elements for alignment with other elements
-        const selectedIds = this.engine.selection.getSelectedIds();
-        if (selectedIds.length > 0) {
-          const allMatchedTargets: SnapTarget[] = [];
-          const allAngleTargets: AngleSnapTarget[] = [];
-
-          for (const id of selectedIds) {
-            const origPos = this.dragOriginalPositions.get(id);
-            if (!origPos) continue;
-            const targetPoint = { x: origPos.x + delta.x, y: origPos.y + delta.y };
-            const snapResult = this.engine.snap.snapPoint(targetPoint);
-            allMatchedTargets.push(...snapResult.matchedTargets);
-            allAngleTargets.push(...snapResult.angleTargets);
-          }
-
-          // Add self-guidelines (row orientation)
-          const selfGuidelines = this.computeSelfGuidelines();
-          allAngleTargets.push(...selfGuidelines);
-
-          if (allMatchedTargets.length > 0 || allAngleTargets.length > 0) {
-            this.engine.guidelines.computeFromSnapTargets(allMatchedTargets, allAngleTargets);
-          } else {
-            this.engine.guidelines.clear();
-          }
-        }
 
         // Preview move (no history)
         const updated: MapElement[] = [];
@@ -307,6 +284,16 @@ export class SelectionTool extends BaseTool {
           updated.push(merged);
         }
         this.engine.events.emit('elements:updated', { elements: updated });
+
+        // After elements have been preview-moved, recompute self-guidelines so
+        // guidelines follow only the dragged elements (no proximity to others).
+        const selfGuidelines = this.computeSelfGuidelines();
+        if (selfGuidelines.length > 0) {
+          this.engine.guidelines.computeFromSnapTargets([], selfGuidelines);
+        } else {
+          this.engine.guidelines.clear();
+        }
+
         this.engine.events.emit('render:request', {});
         break;
       }
@@ -610,6 +597,7 @@ export class SelectionTool extends BaseTool {
         this.engine.events.emit('selection:changed', {
           selectedIds: this.engine.selection.getSelectedIds(),
         });
+        this.clearRotationGuidelines();
         break;
       }
       case 'dragging': {
@@ -1101,6 +1089,7 @@ export class SelectionTool extends BaseTool {
     this.rotationPrimaryId = null;
     this.rotationCenter = null;
     this.rotationOriginalTransforms.clear();
+    this.lastRotationGuidelinesAngle = null;
     this.resizingAreaId = null;
     this.resizeCorner = null;
     this.resizeOriginalBounds = null;
@@ -1238,9 +1227,43 @@ export class SelectionTool extends BaseTool {
     const snapResult = this.engine.snap.snapPoint(point);
     const selfGuidelines = this.computeSelfGuidelines();
     const allAngle = [...snapResult.angleTargets, ...selfGuidelines];
-    if (snapResult.snappedX || snapResult.snappedY || allAngle.length > 0) {
-      this.engine.guidelines.computeFromSnapTargets(snapResult.matchedTargets, allAngle);
+    // For dragging/selection, only show angle-based guidelines (row/table
+    // directions and perpendiculars), not generic proximity/axis guides.
+    if (allAngle.length > 0) {
+      this.engine.guidelines.computeFromSnapTargets([], allAngle);
     }
+  }
+
+  private updateRotationGuidelines(currentAngle?: number): void {
+    if (!this.engine) return;
+    if (this._currentState !== 'rotating') return;
+    if (!this.rotationCenter) return;
+
+    // Lightweight throttling: skip tiny angle changes to reduce work on jitter
+    if (typeof currentAngle === 'number') {
+      if (
+        this.lastRotationGuidelinesAngle !== null &&
+        Math.abs(currentAngle - this.lastRotationGuidelinesAngle) < degToRad(0.5)
+      ) {
+        return;
+      }
+      this.lastRotationGuidelinesAngle = currentAngle;
+    }
+
+    // During rotation, show only guidelines derived from the rotating
+    // selection itself – no proximity/angle targets from other elements.
+    const selfGuidelines = this.computeSelfGuidelines();
+    if (selfGuidelines.length > 0) {
+      this.engine.guidelines.computeFromSnapTargets([], selfGuidelines);
+    } else {
+      this.engine.guidelines.clear();
+    }
+  }
+
+  private clearRotationGuidelines(): void {
+    if (!this.engine) return;
+    this.lastRotationGuidelinesAngle = null;
+    this.engine.guidelines.clear();
   }
 
   /**
@@ -1274,10 +1297,20 @@ export class SelectionTool extends BaseTool {
         if (!seen.has(key)) {
           seen.add(key);
           const pos = row.transform.position;
+          // Derive current row direction from seat positions when possible so
+          // guidelines follow live transforms (e.g. during rotation preview).
+          let directionAngle = row.orientationAngle;
+          if (row.seatIds.length >= 2) {
+            const firstSeat = this.engine.state.get(row.seatIds[0]);
+            const lastSeat = this.engine.state.get(row.seatIds[row.seatIds.length - 1]);
+            if (firstSeat && lastSeat && isSeat(firstSeat) && isSeat(lastSeat)) {
+              directionAngle = angleBetween(firstSeat.transform.position, lastSeat.transform.position);
+            }
+          }
           // Along row direction through row center
           targets.push({
             throughPoint: pos,
-            angle: row.orientationAngle,
+            angle: directionAngle,
             sourceElementId: row.id,
             alignmentType: 'center',
           });
@@ -1288,7 +1321,7 @@ export class SelectionTool extends BaseTool {
             if (firstSeat) {
               targets.push({
                 throughPoint: firstSeat.transform.position,
-                angle: row.orientationAngle + Math.PI / 2,
+                angle: directionAngle + Math.PI / 2,
                 sourceElementId: row.seatIds[0],
                 alignmentType: 'edge-start',
               });
@@ -1296,20 +1329,11 @@ export class SelectionTool extends BaseTool {
             if (lastSeat && row.seatIds.length > 1) {
               targets.push({
                 throughPoint: lastSeat.transform.position,
-                angle: row.orientationAngle + Math.PI / 2,
+                angle: directionAngle + Math.PI / 2,
                 sourceElementId: row.seatIds[row.seatIds.length - 1],
                 alignmentType: 'edge-end',
               });
             }
-          }
-        }
-
-        // Add guidelines for extreme rows in the area
-        if (row.areaId && !processedAreas.has(row.areaId as string)) {
-          processedAreas.add(row.areaId as string);
-          const area = this.engine.state.get(row.areaId);
-          if (area && isArea(area) && area.rowIds.length > 1) {
-            this.addExtremeRowGuidelines(area, row.orientationAngle, targets, seen);
           }
         }
       }

@@ -1,7 +1,11 @@
 import { BaseTool } from './Tool';
 import type { EditorInputEvent } from '../input/InputEvent';
 import type { Point } from '@/src/domain/geometry';
+import type { ElementId } from '@/src/domain/types';
+import type { AngleSnapTarget } from '../systems/SnapEngine';
 import { angleBetween, snapAngleRad, distance } from '@/src/utils/math';
+
+const PREVIEW_GRID_ROW_SOURCE_ID = 'preview-grid-row-0' as unknown as ElementId;
 
 interface GridResult {
   /** All seat positions, organized as a flat array (row-major: row0 seats, row1 seats, ...) */
@@ -32,11 +36,9 @@ export class GridTool extends BaseTool {
     switch (this._currentState) {
       case 'idle':
       case 'preview': {
-        const snapResult = this.engine.snap.snapPoint(event.worldPoint);
         this.originPoint = event.worldPoint;
-        if (snapResult.snappedX || snapResult.snappedY || snapResult.angleTargets.length > 0) {
-          this.engine.guidelines.computeFromSnapTargets(snapResult.matchedTargets, snapResult.angleTargets);
-        }
+        // No guidelines until user starts dragging to define first row direction
+        this.engine.guidelines.clear();
         this.transition('dragging');
         break;
       }
@@ -108,12 +110,7 @@ export class GridTool extends BaseTool {
 
   private updateIdlePreview(worldPoint: Point): void {
     if (!this.engine) return;
-    const snapResult = this.engine.snap.snapPoint(worldPoint);
-    if (snapResult.snappedX || snapResult.snappedY || snapResult.angleTargets.length > 0) {
-      this.engine.guidelines.computeFromSnapTargets(snapResult.matchedTargets, snapResult.angleTargets);
-    } else {
-      this.engine.guidelines.clear();
-    }
+    this.engine.guidelines.clear();
     this.engine.events.emit('preview:seats', {
       seats: [worldPoint],
       anchorPoint: worldPoint,
@@ -122,14 +119,6 @@ export class GridTool extends BaseTool {
 
   private updateFirstRowPreview(endPoint: Point): void {
     if (!this.engine || !this.originPoint) return;
-
-    const snapResult = this.engine.snap.snapPoint(endPoint);
-
-    if (snapResult.snappedX || snapResult.snappedY || snapResult.angleTargets.length > 0) {
-      this.engine.guidelines.computeFromSnapTargets(snapResult.matchedTargets, snapResult.angleTargets);
-    } else {
-      this.engine.guidelines.clear();
-    }
 
     // Snap the drag angle to clean integer degrees (hard snap near key angles)
     const rawAngle = angleBetween(this.originPoint, endPoint);
@@ -150,6 +139,18 @@ export class GridTool extends BaseTool {
     this.seatCount = seats.length;
     this.rowAngle = snappedAngle;
 
+    // Row-specific guidelines from the first row being created only (no SnapEngine/other elements)
+    const rowGuidelines = this.computePreviewRowGuidelines(
+      this.originPoint,
+      this.rowAngle,
+      seats.length > 1 ? seats[seats.length - 1] : undefined,
+    );
+    if (rowGuidelines.length > 0) {
+      this.engine.guidelines.computeFromSnapTargets([], rowGuidelines);
+    } else {
+      this.engine.guidelines.clear();
+    }
+
     this.engine.events.emit('preview:grid', {
       seats,
       anchorPoint: this.originPoint,
@@ -160,14 +161,55 @@ export class GridTool extends BaseTool {
     });
   }
 
+  /**
+   * Build angle guidelines for the row being created: center line and perpendicular(s).
+   * No SnapEngine; guidelines reflect only the grid's first row.
+   */
+  private computePreviewRowGuidelines(
+    basePoint: Point,
+    rowAngle: number,
+    endPoint?: Point,
+  ): AngleSnapTarget[] {
+    const targets: AngleSnapTarget[] = [
+      {
+        throughPoint: basePoint,
+        angle: rowAngle,
+        sourceElementId: PREVIEW_GRID_ROW_SOURCE_ID,
+        alignmentType: 'center',
+      },
+      {
+        throughPoint: basePoint,
+        angle: rowAngle + Math.PI / 2,
+        sourceElementId: PREVIEW_GRID_ROW_SOURCE_ID,
+        alignmentType: 'edge-start',
+      },
+    ];
+    if (endPoint && (endPoint.x !== basePoint.x || endPoint.y !== basePoint.y)) {
+      targets.push({
+        throughPoint: endPoint,
+        angle: rowAngle + Math.PI / 2,
+        sourceElementId: PREVIEW_GRID_ROW_SOURCE_ID,
+        alignmentType: 'edge-end',
+      });
+    }
+    return targets;
+  }
+
   private updateGridPreview(mousePoint: Point): void {
     if (!this.engine || !this.originPoint || this.firstRowPositions.length === 0) return;
 
-    // Show guidelines for alignment (visual only)
-    const snapResult = this.engine.snap.snapPoint(mousePoint);
-
-    if (snapResult.snappedX || snapResult.snappedY || snapResult.angleTargets.length > 0) {
-      this.engine.guidelines.computeFromSnapTargets(snapResult.matchedTargets, snapResult.angleTargets);
+    // Show only first-row orientation guidelines (no SnapEngine / other elements)
+    const endPoint =
+      this.firstRowPositions.length > 1
+        ? this.firstRowPositions[this.firstRowPositions.length - 1]
+        : undefined;
+    const rowGuidelines = this.computePreviewRowGuidelines(
+      this.originPoint,
+      this.rowAngle,
+      endPoint,
+    );
+    if (rowGuidelines.length > 0) {
+      this.engine.guidelines.computeFromSnapTargets([], rowGuidelines);
     } else {
       this.engine.guidelines.clear();
     }

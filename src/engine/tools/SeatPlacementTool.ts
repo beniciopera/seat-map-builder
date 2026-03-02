@@ -1,7 +1,11 @@
 import { BaseTool } from './Tool';
 import type { EditorInputEvent } from '../input/InputEvent';
 import type { Point } from '@/src/domain/geometry';
+import type { ElementId } from '@/src/domain/types';
+import type { AngleSnapTarget } from '../systems/SnapEngine';
 import { angleBetween, snapAngleRad, distance } from '@/src/utils/math';
+
+const PREVIEW_ROW_SOURCE_ID = 'preview-row' as unknown as ElementId;
 
 export class SeatPlacementTool extends BaseTool {
   readonly id = 'seat-placement';
@@ -19,11 +23,9 @@ export class SeatPlacementTool extends BaseTool {
     switch (this._currentState) {
       case 'idle':
       case 'preview': {
-        const snapResult = this.engine.snap.snapPoint(event.worldPoint);
         this.anchorPoint = event.worldPoint;
-        if (snapResult.snappedX || snapResult.snappedY || snapResult.angleTargets.length > 0) {
-          this.engine.guidelines.computeFromSnapTargets(snapResult.matchedTargets, snapResult.angleTargets);
-        }
+        // No guidelines until user starts dragging to define row direction
+        this.engine.guidelines.clear();
         this.transition('anchor');
         break;
       }
@@ -86,12 +88,7 @@ export class SeatPlacementTool extends BaseTool {
 
   private updatePreview(worldPoint: Point): void {
     if (!this.engine) return;
-    const snapResult = this.engine.snap.snapPoint(worldPoint);
-    if (snapResult.snappedX || snapResult.snappedY || snapResult.angleTargets.length > 0) {
-      this.engine.guidelines.computeFromSnapTargets(snapResult.matchedTargets, snapResult.angleTargets);
-    } else {
-      this.engine.guidelines.clear();
-    }
+    this.engine.guidelines.clear();
     this.engine.events.emit('preview:seats', {
       seats: [worldPoint],
       anchorPoint: worldPoint,
@@ -101,14 +98,6 @@ export class SeatPlacementTool extends BaseTool {
   private generateSeats(endPoint: Point): void {
     if (!this.engine || !this.anchorPoint) return;
 
-    const snapResult = this.engine.snap.snapPoint(endPoint);
-
-    if (snapResult.snappedX || snapResult.snappedY || snapResult.angleTargets.length > 0) {
-      this.engine.guidelines.computeFromSnapTargets(snapResult.matchedTargets, snapResult.angleTargets);
-    } else {
-      this.engine.guidelines.clear();
-    }
-
     // Snap the drag angle to clean integer degrees (hard snap near key angles)
     const rawAngle = angleBetween(this.anchorPoint, endPoint);
     const snappedAngle = snapAngleRad(rawAngle);
@@ -117,6 +106,14 @@ export class SeatPlacementTool extends BaseTool {
       x: this.anchorPoint.x + Math.cos(snappedAngle) * dist,
       y: this.anchorPoint.y + Math.sin(snappedAngle) * dist,
     };
+
+    // Row-specific guidelines from the preview row only (no proximity/other elements)
+    const rowGuidelines = this.computePreviewRowGuidelines(this.anchorPoint, snappedAngle, snappedEndPoint);
+    if (rowGuidelines.length > 0) {
+      this.engine.guidelines.computeFromSnapTargets([], rowGuidelines);
+    } else {
+      this.engine.guidelines.clear();
+    }
 
     const seats = this.engine.seatGeneration.generateAlongLine(
       this.anchorPoint,
@@ -132,6 +129,40 @@ export class SeatPlacementTool extends BaseTool {
       angle: snappedAngle,
       seatCount: seats.length,
     });
+  }
+
+  /**
+   * Build angle guidelines for the row being created: center line along the row
+   * and perpendicular(s) through anchor and optional end point. No SnapEngine.
+   */
+  private computePreviewRowGuidelines(
+    basePoint: Point,
+    rowAngle: number,
+    endPoint?: Point,
+  ): AngleSnapTarget[] {
+    const targets: AngleSnapTarget[] = [
+      {
+        throughPoint: basePoint,
+        angle: rowAngle,
+        sourceElementId: PREVIEW_ROW_SOURCE_ID,
+        alignmentType: 'center',
+      },
+      {
+        throughPoint: basePoint,
+        angle: rowAngle + Math.PI / 2,
+        sourceElementId: PREVIEW_ROW_SOURCE_ID,
+        alignmentType: 'edge-start',
+      },
+    ];
+    if (endPoint && (endPoint.x !== basePoint.x || endPoint.y !== basePoint.y)) {
+      targets.push({
+        throughPoint: endPoint,
+        angle: rowAngle + Math.PI / 2,
+        sourceElementId: PREVIEW_ROW_SOURCE_ID,
+        alignmentType: 'edge-end',
+      });
+    }
+    return targets;
   }
 
   private commitSeats(): void {
