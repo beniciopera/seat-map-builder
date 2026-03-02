@@ -251,6 +251,5 @@ interface MapLayout {
 - Implementar auto-save con localStorage o IndexedDB
 - Soporte táctil
 - Viewport culling (renderizar solo lo visto en pantalla) para mejorar performance con mapas grandes
-- Sistema de categorías/colores dinámicas configurables por el usuario
 - Copiar/pegar elementos
 
