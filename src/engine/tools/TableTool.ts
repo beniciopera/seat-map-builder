@@ -1,12 +1,15 @@
 import { BaseTool } from './Tool';
 import type { EditorInputEvent } from '../input/InputEvent';
 import type { Point } from '@/src/domain/geometry';
-import type { Table, Seat } from '@/src/domain/types';
+import type { Table, Seat, ElementId } from '@/src/domain/types';
+import type { AngleSnapTarget } from '../systems/SnapEngine';
 import { generateElementId } from '@/src/domain/ids';
 import { DEFAULT_TRANSFORM } from '@/src/domain/geometry';
 import { DEFAULT_SEAT_RADIUS, DEFAULT_TABLE_RADIUS, DEFAULT_TABLE_SEAT_GAP, DEFAULT_SEATS_PER_TABLE } from '@/src/domain/constraints';
 import { DEFAULT_CATEGORY_ID } from '@/src/domain/categories';
 import { CreateTableCommand } from '../commands/CreateTableCommand';
+
+const PREVIEW_TABLE_SOURCE_ID = 'preview-table' as unknown as ElementId;
 
 export class TableTool extends BaseTool {
   readonly id = 'table';
@@ -31,13 +34,14 @@ export class TableTool extends BaseTool {
       this.transition('preview');
     }
 
-    // Show ghost preview with visual guidelines
-    const snapResult = this.engine.snap.snapPoint(event.worldPoint);
-    if (snapResult.snappedX || snapResult.snappedY || snapResult.angleTargets.length > 0) {
-      this.engine.guidelines.computeFromSnapTargets(snapResult.matchedTargets, snapResult.angleTargets);
-    } else {
-      this.engine.guidelines.clear();
-    }
+    // Element-to-create guidelines only: horizontal and vertical through preview center (no proximity/snap)
+    const center = event.worldPoint;
+    const selfGuidelines: AngleSnapTarget[] = [
+      { throughPoint: center, angle: 0, sourceElementId: PREVIEW_TABLE_SOURCE_ID, alignmentType: 'center' },
+      { throughPoint: center, angle: Math.PI / 2, sourceElementId: PREVIEW_TABLE_SOURCE_ID, alignmentType: 'center' },
+    ];
+    this.engine.guidelines.computeFromSnapTargets([], selfGuidelines);
+
     this.engine.events.emit('preview:table', {
       center: event.worldPoint,
       tableRadius: this.tableRadius,
