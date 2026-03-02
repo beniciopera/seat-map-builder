@@ -107,20 +107,26 @@ export class SeatPlacementTool extends BaseTool {
       y: this.anchorPoint.y + Math.sin(snappedAngle) * dist,
     };
 
-    // Row-specific guidelines from the preview row only (no proximity/other elements)
-    const rowGuidelines = this.computePreviewRowGuidelines(this.anchorPoint, snappedAngle, snappedEndPoint);
-    if (rowGuidelines.length > 0) {
-      this.engine.guidelines.computeFromSnapTargets([], rowGuidelines);
-    } else {
-      this.engine.guidelines.clear();
-    }
-
     const seats = this.engine.seatGeneration.generateAlongLine(
       this.anchorPoint,
       snappedEndPoint,
       this.spacing,
     );
     this.previewPositions = seats;
+
+    // Row-specific guidelines: end perpendicular at last seat created, not at cursor
+    const lastSeatPoint =
+      seats.length > 1 ? seats[seats.length - 1] : undefined;
+    const rowGuidelines = this.computePreviewRowGuidelines(
+      this.anchorPoint,
+      snappedAngle,
+      lastSeatPoint,
+    );
+    if (rowGuidelines.length > 0) {
+      this.engine.guidelines.computeFromSnapTargets([], rowGuidelines);
+    } else {
+      this.engine.guidelines.clear();
+    }
 
     this.engine.events.emit('preview:seats', {
       seats,
