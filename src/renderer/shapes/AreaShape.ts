@@ -1,10 +1,11 @@
 import Konva from 'konva';
 import type { Area } from '@/src/domain/types';
-import { hexToRgba } from '@/src/utils/color';
+import { hexToRgba, ensureMinDarkness } from '@/src/utils/color';
 
 export function createAreaShape(area: Area): Konva.Group {
   const halfW = area.bounds.width / 2;
   const halfH = area.bounds.height / 2;
+  const color = ensureMinDarkness(area.color);
 
   const group = new Konva.Group({
     x: area.transform.position.x,
@@ -19,8 +20,8 @@ export function createAreaShape(area: Area): Konva.Group {
     y: -halfH,
     width: area.bounds.width,
     height: area.bounds.height,
-    fill: hexToRgba(area.color, 0.08),
-    stroke: area.color,
+    fill: hexToRgba(color, 0.08),
+    stroke: color,
     strokeWidth: 1.5,
     cornerRadius: 4,
     name: 'areaRect',
@@ -29,7 +30,7 @@ export function createAreaShape(area: Area): Konva.Group {
   const label = new Konva.Text({
     text: area.label,
     fontSize: 13,
-    fill: area.color,
+    fill: color,
     width: area.bounds.width,
     align: 'center',
     verticalAlign: 'middle',
@@ -52,20 +53,21 @@ export function updateAreaShape(group: Konva.Group, area: Area): void {
   group.y(area.transform.position.y);
   group.rotation(area.transform.rotation * (180 / Math.PI));
 
+  const color = ensureMinDarkness(area.color);
   const rect = group.findOne('.areaRect') as Konva.Rect;
   if (rect) {
     rect.x(-halfW);
     rect.y(-halfH);
     rect.width(area.bounds.width);
     rect.height(area.bounds.height);
-    rect.fill(hexToRgba(area.color, 0.08));
-    rect.stroke(area.color);
+    rect.fill(hexToRgba(color, 0.08));
+    rect.stroke(color);
   }
 
   const label = group.findOne('.areaLabel') as Konva.Text;
   if (label) {
     label.text(area.label);
-    label.fill(area.color);
+    label.fill(color);
     label.width(area.bounds.width);
     label.x(-halfW);
     label.y(-label.height() / 2);
@@ -83,10 +85,11 @@ export function applyAreaSelection(group: Konva.Group): void {
 }
 
 export function clearAreaSelection(group: Konva.Group, area: Area): void {
+  const color = ensureMinDarkness(area.color);
   const rect = group.findOne('.areaRect') as Konva.Rect;
   if (rect) {
-    rect.fill(hexToRgba(area.color, 0.08));
-    rect.stroke(area.color);
+    rect.fill(hexToRgba(color, 0.08));
+    rect.stroke(color);
     rect.strokeWidth(1.5);
     rect.dashEnabled(false);
   }

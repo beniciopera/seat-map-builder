@@ -19,6 +19,7 @@ import type { Category } from '@/src/domain/categories';
 import { generateCategoryId } from '@/src/domain/categories';
 import { AddCategoryCommand } from '@/src/engine/commands/AddCategoryCommand';
 import { DeleteCategoryCommand } from '@/src/engine/commands/DeleteCategoryCommand';
+import { categoryColor } from '@/src/utils/color';
 
 export function CategoryManager() {
   const engine = useEngine();
@@ -113,7 +114,7 @@ export function CategoryManager() {
                     width: 14,
                     height: 14,
                     borderRadius: '50%',
-                    bgcolor: cat.color,
+                    bgcolor: categoryColor(cat.id),
                     border: '1px solid rgba(0,0,0,0.2)',
                     flexShrink: 0,
                   }}
