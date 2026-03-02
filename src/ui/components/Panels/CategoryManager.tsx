@@ -158,6 +158,12 @@ export function CategoryManager() {
                   setNewName(e.target.value);
                   setNameError('');
                 }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleSubmitAdd();
+                  }
+                }}
                 error={!!nameError}
                 helperText={nameError}
                 fullWidth
