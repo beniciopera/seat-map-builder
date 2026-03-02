@@ -73,7 +73,7 @@ export class PreviewLayer {
         y: pos.y,
         radius: DEFAULT_SEAT_RADIUS,
         fill: 'rgba(255, 255, 255, 0.5)',
-        stroke: 'rgba(76, 175, 80, 0.5)',
+        stroke: 'rgba(33, 150, 243, 0.5)',
         strokeWidth: 2,
         listening: false,
       });
@@ -221,7 +221,7 @@ export class PreviewLayer {
           y: pos.y,
           radius: DEFAULT_SEAT_RADIUS,
           fill: 'rgba(255, 255, 255, 0.5)',
-          stroke: 'rgba(76, 175, 80, 0.5)',
+          stroke: 'rgba(33, 150, 243, 0.5)',
           strokeWidth: 2,
           listening: false,
         });
@@ -270,7 +270,7 @@ export class PreviewLayer {
         } else {
           line = new Konva.Line({
             points: [midStart.x, midStart.y, midEnd.x, midEnd.y],
-            stroke: 'rgba(76, 175, 80, 0.3)',
+            stroke: 'rgba(33, 150, 243, 0.3)',
             strokeWidth: 1,
             dash: [4, 4],
             listening: false,

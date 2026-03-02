@@ -621,8 +621,8 @@ export class SelectionLayer {
       x,
       y,
       radius: 6,
-      fill: 'rgba(76, 175, 80, 0.6)',
-      stroke: 'rgba(76, 175, 80, 1)',
+      fill: 'rgba(66, 133, 244, 0.6)',
+      stroke: 'rgba(66, 133, 244, 1)',
       strokeWidth: 1.5,
       listening: true,
     });
@@ -659,8 +659,8 @@ export class SelectionLayer {
       x: handleX,
       y: handleY,
       radius: 6,
-      fill: 'rgba(76, 175, 80, 0.6)',
-      stroke: 'rgba(76, 175, 80, 1)',
+      fill: 'rgba(66, 133, 244, 0.6)',
+      stroke: 'rgba(66, 133, 244, 1)',
       strokeWidth: 1.5,
       listening: true,
     });
