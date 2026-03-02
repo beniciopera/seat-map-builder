@@ -144,17 +144,16 @@ El editor incluye 7 herramientas, cada una con su propia máquina de estados int
 ### Atajos Globales
 
 
-| Atajo                                   | Acción                             |
-| --------------------------------------- | ---------------------------------- |
-| `Ctrl/Cmd + Z`                          | Deshacer                           |
-| `Ctrl/Cmd + Y` / `Ctrl/Cmd + Shift + Z` | Rehacer                            |
-| `Ctrl/Cmd + A`                          | Seleccionar todo                   |
-| `Delete` / `Backspace`                  | Eliminar selección                 |
-| `Escape`                                | Cancelar operación / deseleccionar |
-| `Space` (mantener)                      | Pan temporal                       |
-| `Alt + Scroll`                          | Zoom centrado en cursor            |
-| `Scroll`                                | Pan                                |
-| `Click central` (drag)                  | Pan                                |
+| Atajo                                   | Acción                  |
+| --------------------------------------- | ----------------------- |
+| `Ctrl/Cmd + Z`                          | Deshacer                |
+| `Ctrl/Cmd + Y` / `Ctrl/Cmd + Shift + Z` | Rehacer                 |
+| `Ctrl/Cmd + A`                          | Seleccionar todo        |
+| `Delete` / `Backspace`                  | Eliminar selección      |
+| `Space` (mantener)                      | Pan temporal            |
+| `Alt/Option + Scroll`                   | Zoom centrado en cursor |
+| `Scroll/Shift + Scroll`                 | Pan                     |
+| `Click central` (drag)                  | Pan                     |
 
 
 ---
@@ -163,16 +162,16 @@ El editor incluye 7 herramientas, cada una con su propia máquina de estados int
 
 ### BaseElement
 
-Todos los elementos extienden esta interfaz base:
+Todos los elementos extienden esta interfaz base (propiedades inmutables):
 
 ```typescript
 interface BaseElement {
-  id: ElementId;
-  type: 'seat' | 'row' | 'area' | 'table';
-  transform: { position: Point; rotation: number; scale: Point };
-  bounds: { x: number; y: number; width: number; height: number };
-  locked: boolean;
-  visible: boolean;
+  readonly id: ElementId;
+  readonly type: 'seat' | 'row' | 'area' | 'table';
+  readonly transform: Transform;  // { position: Point; rotation: number; scale: Point }
+  readonly bounds: Rect;         // { x: number; y: number; width: number; height: number }
+  readonly locked: boolean;
+  readonly visible: boolean;
 }
 ```
 
@@ -180,29 +179,36 @@ interface BaseElement {
 
 ```typescript
 interface Seat extends BaseElement {
-  type: 'seat';
-  label: string;              // ej: "A-1", "T1-3"
-  rowId: ElementId | null;
-  tableId: ElementId | null;
-  status?: 'available' | 'reserved' | 'blocked' | 'sold';
-  category: 'planta1' | 'planta2' | 'vip';
-  radius: number;
+  readonly type: 'seat';
+  readonly label: string;              // ej: "A-1", "T1-3"
+  readonly rowId: ElementId | null;
+  readonly tableId: ElementId | null;
+  readonly status?: 'available' | 'reserved' | 'blocked' | 'sold';
+  readonly category: CategoryId;      // string, ej: "planta1" | "planta2" | "vip"
+  readonly radius: number;
 }
 ```
 
 ### Row
 
 ```typescript
+interface CurveDefinition {
+  readonly chord: number;   // longitud de la cuerda que define la parábola
+  readonly center: Point;   // centro en espacio mundo
+  readonly angle: number;   // ángulo de la cuerda (radianes)
+}
+
 interface Row extends BaseElement {
-  type: 'row';
-  label: string;                           // ej: "A", "B", "AA"
-  seatIds: readonly ElementId[];
-  orientationAngle: number;                // radianes
-  spacing: number;                         // px entre asientos
-  seatOrderDirection: 'left-to-right' | 'right-to-left';
-  areaId: ElementId | null;
-  curveRadius: number;                     // 0 = recta, != 0 = sagita parabólica
-  category: RowCategory;
+  readonly type: 'row';
+  readonly label: string;                           // ej: "A", "B", "AA"
+  readonly seatIds: readonly ElementId[];
+  readonly orientationAngle: number;                // radianes
+  readonly spacing: number;                         // px entre asientos
+  readonly seatOrderDirection: 'left-to-right' | 'right-to-left';
+  readonly areaId: ElementId | null;
+  readonly curveRadius: number;                     // 0 = recta, != 0 = sagita parabólica
+  readonly curveDefinition: CurveDefinition | null;
+  readonly category: CategoryId;
 }
 ```
 
@@ -210,12 +216,12 @@ interface Row extends BaseElement {
 
 ```typescript
 interface Table extends BaseElement {
-  type: 'table';
-  label: string;              // ej: "T1"
-  seatCount: number;
-  seatIds: readonly ElementId[];
-  tableRadius: number;
-  category: SeatCategory;
+  readonly type: 'table';
+  readonly label: string;              // ej: "T1"
+  readonly seatCount: number;
+  readonly seatIds: readonly ElementId[];
+  readonly tableRadius: number;
+  readonly category: CategoryId;
 }
 ```
 
@@ -223,10 +229,10 @@ interface Table extends BaseElement {
 
 ```typescript
 interface Area extends BaseElement {
-  type: 'area';
-  label: string;
-  color: string;
-  rowIds: readonly ElementId[];
+  readonly type: 'area';
+  readonly label: string;
+  readonly color: string;
+  readonly rowIds: readonly ElementId[];
 }
 ```
 
@@ -234,17 +240,17 @@ interface Area extends BaseElement {
 
 ```typescript
 interface MapLayout {
-  id: string;
-  name: string;
-  width: number;    // default: 5000
-  height: number;   // default: 3000
-  elements: ReadonlyMap<ElementId, MapElement>;
-  createdAt: number;
-  updatedAt: number;
+  readonly id: string;
+  readonly name: string;
+  readonly width: number;    // default: 5000
+  readonly height: number;   // default: 3000
+  readonly elements: ReadonlyMap<ElementId, MapElement>;
+  readonly createdAt: number;
+  readonly updatedAt: number;
 }
 ```
 
-El formato de serialización usa `schemaVersion: 1` y convierte el `Map` de elementos a un array JSON para importación/exportación.
+El formato de serialización usa `schemaVersion: 2`. El `Map` de elementos se convierte a un array JSON para importación/exportación. Opcionalmente se puede incluir el array `categories` (lista de `Category`: `id`, `name`, `color`, `isDefault`) para persistir categorías dinámicas.
 
 ---
 
@@ -255,7 +261,7 @@ El formato de serialización usa `schemaVersion: 1` y convierte el `Map` de elem
 - **Canvas fijo de 5000×3000**: el tamaño del canvas es constante; los elementos se colocan dentro de estos límites.
 - **Persistencia local**: el mapa se guarda/carga como archivo JSON exportado. No hay backend ni base de datos.
 - **Labels auto-generados**: las filas se etiquetan automáticamente con letras (A, B, ..., Z, AA, AB, ...) y los asientos con números secuenciales dentro de su fila/mesa (pueden ser modificados).
-- **Categorías fijas**: tres categorías predefinidas (`planta1`, `planta2`, `vip`) en vez de categorías dinámicas.
+- **Categorías**: por defecto hay tres categorías predefinidas (`planta1`, `planta2`, `vip`). El tipo `CategoryId` es `string`, y con el esquema de serialización v2 se pueden exportar/importar categorías dinámicas (id, name, color, isDefault).
 - **Filas curvas parabólicas**: la curvatura usa una parábola (sagita) en vez de un arco circular, priorizando simplicidad de implementación.
 
 ---
@@ -273,5 +279,4 @@ El formato de serialización usa `schemaVersion: 1` y convierte el `Map` de elem
 - Viewport culling (renderizar solo lo visto en pantalla) para mejorar performance con mapas grandes
 - Sistema de categorías/colores dinámicas configurables por el usuario
 - Copiar/pegar elementos
-
 
