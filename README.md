@@ -87,29 +87,7 @@ Se eligió Konva.js en modo imperativo (sin `react-konva`) para tener control to
 
 ### Command Pattern (Undo/Redo)
 
-Toda mutación al mapa pasa por un objeto `Command` con métodos `execute()` y `undo()`. Esto garantiza undo/redo completo para cualquier operación:
-
-
-| Comando                       | Operación                                    |
-| ----------------------------- | -------------------------------------------- |
-| `PlaceSeatsCommand`           | Colocar fila + asientos (o asientos sueltos) |
-| `PlaceGridCommand`            | Colocar grilla de múltiples filas            |
-| `CreateTableCommand`          | Crear mesa con asientos circulares           |
-| `CreateAreaCommand`           | Crear área rectangular                       |
-| `DeleteElementsCommand`       | Eliminar elementos (guarda snapshot)         |
-| `MoveElementsCommand`         | Mover elementos (posiciones antes/después)   |
-| `RotateElementsCommand`       | Rotar elementos alrededor de un centro       |
-| `ResizeElementCommand`        | Redimensionar área                           |
-| `ExtendRowCommand`            | Agregar asientos a los extremos de una fila  |
-| `ContractRowCommand`          | Remover asientos de los extremos de una fila |
-| `CurveRowCommand`             | Aplicar curvatura parabólica a una fila      |
-| `UpdatePropertiesCommand`     | Cambiar propiedades arbitrarias              |
-| `ChangeCategoryCommand`       | Cambiar categoría de elementos               |
-| `ChangeTableSeatCountCommand` | Cambiar cantidad de asientos de una mesa     |
-| `CompoundCommand`             | Agrupar múltiples comandos en una unidad     |
-
-
-La historia mantiene un máximo de 100 entradas con doble stack (undo + redo).
+Toda mutación al mapa pasa por un objeto `Command` con métodos `execute()` y `undo()`. Esto garantiza undo/redo completo para cualquier operación.
 
 ### Spatial Index
 
@@ -249,19 +227,14 @@ interface MapLayout {
   readonly updatedAt: number;
 }
 ```
-
-El formato de serialización usa `schemaVersion: 2`. El `Map` de elementos se convierte a un array JSON para importación/exportación. Opcionalmente se puede incluir el array `categories` (lista de `Category`: `id`, `name`, `color`, `isDefault`) para persistir categorías dinámicas.
-
 ---
 
 ## Supuestos Realizados
 
 - **Solo para escritorio**: el editor asume uso con mouse/trackpad y teclado. No se implementaron gestos táctiles.
-- **Un solo mapa a la vez**: no hay sistema de múltiples pestañas o proyectos.
 - **Canvas fijo de 5000×3000**: el tamaño del canvas es constante; los elementos se colocan dentro de estos límites.
 - **Persistencia local**: el mapa se guarda/carga como archivo JSON exportado. No hay backend ni base de datos.
-- **Labels auto-generados**: las filas se etiquetan automáticamente con letras (A, B, ..., Z, AA, AB, ...) y los asientos con números secuenciales dentro de su fila/mesa (pueden ser modificados).
-- **Categorías**: por defecto hay tres categorías predefinidas (`planta1`, `planta2`, `vip`). El tipo `CategoryId` es `string`, y con el esquema de serialización v2 se pueden exportar/importar categorías dinámicas (id, name, color, isDefault).
+- **Categorías**: por defecto hay tres categorías predefinidas (`planta1`, `planta2`, `vip`). El tipo `CategoryId` es `string`, y con el esquema de serialización se pueden exportar/importar categorías dinámicas (id, name, color, isDefault).
 - **Filas curvas parabólicas**: la curvatura usa una parábola (sagita) en vez de un arco circular, priorizando simplicidad de implementación.
 
 ---
