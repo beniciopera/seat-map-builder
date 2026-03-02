@@ -244,6 +244,7 @@ interface MapLayout {
 - **Sin soporte mobile/touch**: no hay gestos de pinch-to-zoom ni interacciones táctiles.
 - **Sin persistencia automática**: el usuario debe exportar/importar manualmente. No hay auto-save.
 - **Performance con miles de elementos**: aunque el spatial index optimiza las consultas, el rendering de Konva podría degradarse con cantidades muy grandes de elementos (>5000 asientos) ya que no se implementó culling por viewport.
+- **Limite de historial para UNDO/REDO**: el sistema guarda hasta 100 operaciones.
 
 ### Mejoras Posibles
 
