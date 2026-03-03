@@ -238,9 +238,6 @@ interface MapLayout {
 - **Solo para escritorio**: el editor asume uso con mouse/trackpad y teclado. No se implementaron gestos táctiles.
 - **Canvas fijo de 5000×3000**: el tamaño del canvas es constante; los elementos se colocan dentro de estos límites.
 - **Persistencia local**: el mapa se guarda/carga como archivo JSON exportado. No hay backend ni base de datos.
-- **Categorías**: por defecto hay tres categorías predefinidas (`planta1`, `planta2`, `vip`). El tipo `CategoryId` es `string`, y con el esquema de serialización se pueden exportar/importar categorías dinámicas (id, name, color, isDefault).
-- **Filas curvas parabólicas**: la curvatura usa una parábola (sagita) en vez de un arco circular, priorizando simplicidad de implementación.
-
 ---
 
 ## Limitaciones Conocidas
@@ -249,9 +246,5 @@ interface MapLayout {
 - **Sin persistencia automática**: el usuario debe exportar/importar manualmente. No hay auto-save.
 - **Limite de historial para UNDO/REDO**: el sistema guarda hasta 100 operaciones.
 
-### Mejoras Posibles
 
-- Implementar auto-save con localStorage o IndexedDB
-- Soporte táctil
-- Copiar/pegar elementos
 
