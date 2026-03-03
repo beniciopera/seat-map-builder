@@ -91,10 +91,6 @@ El `EditorEngine` es completamente agnóstico al framework. No conoce React ni K
 
 Toda mutación al mapa pasa por un objeto `Command` con métodos `execute()` y `undo()`. Esto garantiza undo/redo completo para cualquier operación.
 
-### Spatial Index
-
-Índice espacial basado en una grilla hash uniforme (celdas de 50px). Todas las consultas de hit-testing, detección de snap y box-select pasan primero por el índice para obtener candidatos en O(área local) en vez de O(todos los elementos), y luego aplican tests geométricos precisos.
-
 ### Sistema de Eventos Tipado
 
 Un event emitter in-process con tipos estrictos para todos los eventos (`elements:added`, `selection:changed`, `tool:changed`, `viewport:changed`, `history:changed`, `preview:`*, etc.). Desacopla completamente engine, renderer y UI.
