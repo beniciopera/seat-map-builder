@@ -53,6 +53,8 @@ export interface Area extends BaseElement {
   readonly label: string;
   readonly color: string;
   readonly rowIds: readonly ElementId[];
+  /** World-space polygon vertices. When present, area is polygonal; otherwise rect from bounds. */
+  readonly vertices?: readonly Point[];
 }
 
 export interface Table extends BaseElement {

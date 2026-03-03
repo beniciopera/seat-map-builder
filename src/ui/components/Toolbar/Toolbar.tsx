@@ -16,6 +16,7 @@ import EventSeatIcon from '@mui/icons-material/EventSeat';
 import CropFreeIcon from '@mui/icons-material/CropFree';
 import TableRestaurantIcon from '@mui/icons-material/TableRestaurant';
 import PanToolIcon from '@mui/icons-material/PanTool';
+import BrushIcon from '@mui/icons-material/Brush';
 import GridViewIcon from '@mui/icons-material/GridView';
 import UndoIcon from '@mui/icons-material/Undo';
 import RedoIcon from '@mui/icons-material/Redo';
@@ -80,6 +81,9 @@ export function Toolbar() {
           </ToggleButton>
           <ToggleButton value="area">
             <Tooltip title="Draw Area (A)"><CropFreeIcon fontSize="small" /></Tooltip>
+          </ToggleButton>
+          <ToggleButton value="vector-brush">
+            <Tooltip title="Vector Brush (B)"><BrushIcon fontSize="small" /></Tooltip>
           </ToggleButton>
           <ToggleButton value="seat-picker">
             <Tooltip title="Seat Picker (P)"><SeatPickerIcon sx={{ fontSize: 28 }} /></Tooltip>

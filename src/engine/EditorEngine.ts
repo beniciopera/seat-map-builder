@@ -1,6 +1,7 @@
-import type { MapLayout, MapElement, ElementId, Seat, Table, Row } from '@/src/domain/types';
+import type { MapLayout, MapElement, ElementId, Seat, Table, Row, Area } from '@/src/domain/types';
 import type { Category, CategoryId } from '@/src/domain/categories';
 import type { Point, Rect } from '@/src/domain/geometry';
+import { pointInPolygon } from '@/src/domain/polygon';
 import { rowLabelFromIndex } from '@/src/domain/labels';
 import { EditorEventEmitter } from './events';
 import { EditorState } from './state/EditorState';
@@ -169,6 +170,10 @@ export class EditorEngine {
         return false;
       }
       case 'area': {
+        const area = el as Area;
+        if (area.vertices && area.vertices.length >= 3) {
+          return pointInPolygon(point, area.vertices);
+        }
         const b = el.bounds;
         return point.x >= b.x && point.x <= b.x + b.width &&
                point.y >= b.y && point.y <= b.y + b.height;
@@ -285,6 +290,21 @@ export class EditorEngine {
       if (!taken) return { label: candidate, counter };
       counter++;
     }
+  }
+
+  nextAvailableAreaLabel(_startCounter: number): { label: string; counter: number } {
+    let maxN = 0;
+    const areaLabelRegex = /^Area (\d+)$/;
+    for (const el of this.state.getAll()) {
+      if (el.type !== 'area') continue;
+      const match = (el as { label: string }).label.match(areaLabelRegex);
+      if (match) {
+        const n = parseInt(match[1], 10);
+        if (n > maxN) maxN = n;
+      }
+    }
+    const counter = maxN + 1;
+    return { label: `Area ${counter}`, counter };
   }
 
   resetState(): void {

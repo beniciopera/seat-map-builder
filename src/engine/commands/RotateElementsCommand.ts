@@ -1,8 +1,9 @@
 import type { Command } from './Command';
-import type { ElementId, MapElement, CurveDefinition } from '@/src/domain/types';
-import { isRow } from '@/src/domain/types';
+import type { ElementId, MapElement, CurveDefinition, Area } from '@/src/domain/types';
+import { isRow, isArea } from '@/src/domain/types';
 import type { Point, Rect } from '@/src/domain/geometry';
 import type { EditorEngine } from '../EditorEngine';
+import { boundsFromVertices, centerOfVertices } from '@/src/domain/polygon';
 
 interface SavedTransform {
   position: Point;
@@ -10,6 +11,7 @@ interface SavedTransform {
   bounds: Rect;
   orientationAngle?: number;
   curveDefinition?: CurveDefinition | null;
+  vertices?: readonly Point[];
 }
 
 export class RotateElementsCommand implements Command {
@@ -38,6 +40,9 @@ export class RotateElementsCommand implements Command {
           saved.orientationAngle = el.orientationAngle;
           saved.curveDefinition = el.curveDefinition;
         }
+        if (isArea(el) && (el as Area).vertices) {
+          saved.vertices = (el as Area).vertices;
+        }
         this.oldTransforms.set(id, saved);
       }
     }
@@ -59,6 +64,9 @@ export class RotateElementsCommand implements Command {
       if (isRow(merged) && old.orientationAngle !== undefined) {
         merged = { ...merged, orientationAngle: old.orientationAngle, curveDefinition: old.curveDefinition ?? null } as MapElement;
       }
+      if (isArea(merged) && old.vertices) {
+        merged = { ...merged, vertices: old.vertices } as MapElement;
+      }
       this.engine.state.set(id, merged);
       this.engine.spatialIndex.update(merged);
     }
@@ -76,6 +84,30 @@ export class RotateElementsCommand implements Command {
     for (const id of this.ids) {
       const el = this.engine.state.get(id);
       if (!el || el.locked) continue;
+
+      if (isArea(el) && (el as Area).vertices && (el as Area).vertices!.length >= 3) {
+        const area = el as Area;
+        const newVertices = area.vertices!.map((v) => {
+          const dx = v.x - this.center.x;
+          const dy = v.y - this.center.y;
+          return {
+            x: this.center.x + dx * cos - dy * sin,
+            y: this.center.y + dx * sin + dy * cos,
+          };
+        });
+        const bounds = boundsFromVertices(newVertices);
+        const position = centerOfVertices(newVertices);
+        const merged = {
+          ...area,
+          transform: { ...area.transform, position, rotation: 0 },
+          bounds,
+          vertices: newVertices,
+        } as MapElement;
+        this.engine.state.set(id, merged);
+        this.engine.spatialIndex.update(merged);
+        updated.push(merged);
+        continue;
+      }
 
       const pos = el.transform.position;
       const dx = pos.x - this.center.x;

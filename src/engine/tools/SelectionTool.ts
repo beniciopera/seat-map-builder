@@ -14,6 +14,7 @@ import { distance, angleBetween, parabolaPositions, parabolaTangentLocal, parabo
 import { generateElementId } from '@/src/domain/ids';
 import { DEFAULT_SEAT_RADIUS, isRowCurvatureEffectivelyStraight } from '@/src/domain/constraints';
 import type { SnapTarget, AngleSnapTarget } from '../systems/SnapEngine';
+import { boundsFromVertices, centerOfVertices } from '@/src/domain/polygon';
 
 export class SelectionTool extends BaseTool {
   readonly id = 'selection';
@@ -25,6 +26,7 @@ export class SelectionTool extends BaseTool {
   private dragStartScreen: Point | null = null;
   private dragOriginalPositions = new Map<ElementId, Point>();
   private dragOriginalCurveDefinitions = new Map<ElementId, CurveDefinition | null>();
+  private dragOriginalVertices = new Map<ElementId, Readonly<Point>[]>();
   private boxSelectStart: Point | null = null;
   private boxSelectCurrent: Point | null = null;
 
@@ -141,6 +143,7 @@ export class SelectionTool extends BaseTool {
       this.dragStartScreen = event.screenPoint;
       this.dragOriginalPositions.clear();
       this.dragOriginalCurveDefinitions.clear();
+      this.dragOriginalVertices.clear();
 
       for (const id of this.engine.selection.getSelectedIds()) {
         const el = this.engine.state.get(id);
@@ -148,6 +151,9 @@ export class SelectionTool extends BaseTool {
           this.dragOriginalPositions.set(id, el.transform.position);
           if (isRow(el) && el.curveDefinition) {
             this.dragOriginalCurveDefinitions.set(id, el.curveDefinition);
+          }
+          if (isArea(el) && (el as Area).vertices && (el as Area).vertices!.length >= 3) {
+            this.dragOriginalVertices.set(id, [...(el as Area).vertices!]);
           }
         }
       }
@@ -162,12 +168,16 @@ export class SelectionTool extends BaseTool {
       this.dragStartScreen = event.screenPoint;
       this.dragOriginalPositions.clear();
       this.dragOriginalCurveDefinitions.clear();
+      this.dragOriginalVertices.clear();
       for (const id of this.engine.selection.getSelectedIds()) {
         const el = this.engine.state.get(id);
         if (el) {
           this.dragOriginalPositions.set(id, el.transform.position);
           if (isRow(el) && el.curveDefinition) {
             this.dragOriginalCurveDefinitions.set(id, el.curveDefinition);
+          }
+          if (isArea(el) && (el as Area).vertices && (el as Area).vertices!.length >= 3) {
+            this.dragOriginalVertices.set(id, [...(el as Area).vertices!]);
           }
         }
       }
@@ -260,11 +270,25 @@ export class SelectionTool extends BaseTool {
           const el = this.engine.state.get(id);
           if (!el) continue;
           const newPos = { x: origPos.x + delta.x, y: origPos.y + delta.y };
-          let merged = {
-            ...el,
-            transform: { ...el.transform, position: newPos },
-            bounds: { ...el.bounds, x: newPos.x - el.bounds.width / 2, y: newPos.y - el.bounds.height / 2 },
-          } as MapElement;
+          let merged: MapElement;
+          const origVertices = this.dragOriginalVertices.get(id);
+          if (isArea(el) && origVertices && origVertices.length >= 3) {
+            const area = el as Area;
+            const newVertices = origVertices.map((v) => ({ x: v.x + delta.x, y: v.y + delta.y }));
+            const bounds = boundsFromVertices(newVertices);
+            merged = {
+              ...area,
+              transform: { ...area.transform, position: newPos },
+              bounds,
+              vertices: newVertices,
+            } as MapElement;
+          } else {
+            merged = {
+              ...el,
+              transform: { ...el.transform, position: newPos },
+              bounds: { ...el.bounds, x: newPos.x - el.bounds.width / 2, y: newPos.y - el.bounds.height / 2 },
+            } as MapElement;
+          }
           // Translate curveDefinition.center during live preview so shadow follows
           const origCurveDef = this.dragOriginalCurveDefinitions.get(id);
           if (isRow(merged) && origCurveDef) {
@@ -609,15 +633,28 @@ export class SelectionTool extends BaseTool {
 
         // Only commit if actually moved
         if (Math.abs(delta.x) > 1 || Math.abs(delta.y) > 1) {
-          // Restore original positions and curveDefinitions first (for clean command)
+          // Restore original positions, curveDefinitions, and vertices first (for clean command)
           for (const [id, origPos] of this.dragOriginalPositions) {
             const el = this.engine.state.get(id);
             if (!el) continue;
-            let restored = {
-              ...el,
-              transform: { ...el.transform, position: origPos },
-              bounds: { ...el.bounds, x: origPos.x - el.bounds.width / 2, y: origPos.y - el.bounds.height / 2 },
-            } as MapElement;
+            const origVertices = this.dragOriginalVertices.get(id);
+            let restored: MapElement;
+            if (isArea(el) && origVertices && origVertices.length >= 3) {
+              const area = el as Area;
+              const bounds = boundsFromVertices(origVertices);
+              restored = {
+                ...area,
+                transform: { ...area.transform, position: origPos },
+                bounds,
+                vertices: [...origVertices],
+              } as MapElement;
+            } else {
+              restored = {
+                ...el,
+                transform: { ...el.transform, position: origPos },
+                bounds: { ...el.bounds, x: origPos.x - el.bounds.width / 2, y: origPos.y - el.bounds.height / 2 },
+              } as MapElement;
+            }
             const origCurveDef = this.dragOriginalCurveDefinitions.get(id);
             if (isRow(restored) && origCurveDef !== undefined) {
               restored = { ...restored, curveDefinition: origCurveDef } as MapElement;
@@ -992,16 +1029,29 @@ export class SelectionTool extends BaseTool {
 
   cancel(): void {
     if (this._currentState === 'dragging' && this.engine) {
-      // Revert to original positions and curveDefinitions
+      // Revert to original positions, curveDefinitions, and vertices
       const reverted: MapElement[] = [];
       for (const [id, origPos] of this.dragOriginalPositions) {
         const el = this.engine.state.get(id);
         if (!el) continue;
-        let restored = {
-          ...el,
-          transform: { ...el.transform, position: origPos },
-          bounds: { ...el.bounds, x: origPos.x - el.bounds.width / 2, y: origPos.y - el.bounds.height / 2 },
-        } as MapElement;
+        const origVertices = this.dragOriginalVertices.get(id);
+        let restored: MapElement;
+        if (isArea(el) && origVertices && origVertices.length >= 3) {
+          const area = el as Area;
+          const bounds = boundsFromVertices(origVertices);
+          restored = {
+            ...area,
+            transform: { ...area.transform, position: origPos },
+            bounds,
+            vertices: [...origVertices],
+          } as MapElement;
+        } else {
+          restored = {
+            ...el,
+            transform: { ...el.transform, position: origPos },
+            bounds: { ...el.bounds, x: origPos.x - el.bounds.width / 2, y: origPos.y - el.bounds.height / 2 },
+          } as MapElement;
+        }
         const origCurveDef = this.dragOriginalCurveDefinitions.get(id);
         if (isRow(restored) && origCurveDef !== undefined) {
           restored = { ...restored, curveDefinition: origCurveDef } as MapElement;
@@ -1077,6 +1127,7 @@ export class SelectionTool extends BaseTool {
     this.dragStartWorld = null;
     this.dragOriginalPositions.clear();
     this.dragOriginalCurveDefinitions.clear();
+    this.dragOriginalVertices.clear();
     this.boxSelectStart = null;
     this.boxSelectCurrent = null;
     this.extendingRowId = null;
@@ -1709,6 +1760,7 @@ export class SelectionTool extends BaseTool {
 
     const el = this.engine.state.get(selectedIds[0]);
     if (!el || !isArea(el)) return null;
+    if ((el as Area).vertices && (el as Area).vertices!.length >= 3) return null;
 
     const b = el.bounds;
     const cx = el.transform.position.x;

@@ -27,6 +27,9 @@ export class PreviewLayer {
   private areaLabel: Konva.Text | null = null;
   private areaTooltip: Konva.Text | null = null;
 
+  // Polygon (vector brush) preview nodes - destroyed on clear
+  private polygonNodes: Konva.Shape[] = [];
+
   constructor() {
     this.layer = new Konva.Layer({ name: 'preview', listening: false });
   }
@@ -386,10 +389,96 @@ export class PreviewLayer {
     this.layer.batchDraw();
   }
 
+  showPolygonPreview(
+    points: Point[],
+    cursorPoint: Point,
+    color: string,
+    label: string,
+    angleDeg?: number
+  ): void {
+    for (const node of this.polygonNodes) {
+      node.destroy();
+    }
+    this.polygonNodes = [];
+
+    if (points.length === 0) {
+      this.layer.batchDraw();
+      return;
+    }
+
+    const flat = (p: Point) => [p.x, p.y];
+    const linePoints = points.flatMap(flat);
+    linePoints.push(cursorPoint.x, cursorPoint.y);
+
+    const line = new Konva.Line({
+      points: linePoints,
+      stroke: color,
+      strokeWidth: 2,
+      dash: [6, 4],
+      listening: false,
+    });
+    this.layer.add(line);
+    this.polygonNodes.push(line);
+
+    for (let i = 0; i < points.length; i++) {
+      const p = points[i];
+      const isFirst = i === 0;
+      const circle = new Konva.Circle({
+        x: p.x,
+        y: p.y,
+        radius: isFirst ? 6 : 4,
+        fill: isFirst ? hexToRgba(color, 0.5) : hexToRgba(color, 0.25),
+        stroke: color,
+        strokeWidth: isFirst ? 2 : 1,
+        listening: false,
+      });
+      this.layer.add(circle);
+      this.polygonNodes.push(circle);
+    }
+
+    if (points.length > 0 && angleDeg !== undefined) {
+      const last = points[points.length - 1];
+      const rad = (angleDeg * Math.PI) / 180;
+      const len = 1500;
+      const end = {
+        x: last.x + Math.cos(rad) * len,
+        y: last.y + Math.sin(rad) * len,
+      };
+      const angleLine = new Konva.Line({
+        points: [last.x, last.y, end.x, end.y],
+        stroke: 'rgba(33, 150, 243, 0.4)',
+        strokeWidth: 1,
+        dash: [4, 4],
+        listening: false,
+      });
+      this.layer.add(angleLine);
+      this.polygonNodes.push(angleLine);
+    }
+
+    const tooltipText = angleDeg !== undefined ? `${angleDeg}°` : label;
+    const tooltip = new Konva.Text({
+      x: cursorPoint.x + 16,
+      y: cursorPoint.y - 20,
+      text: tooltipText,
+      fontSize: 13,
+      fontStyle: 'bold',
+      fill: 'rgba(233, 30, 99, 0.9)',
+      listening: false,
+    });
+    this.layer.add(tooltip);
+    this.polygonNodes.push(tooltip);
+
+    this.layer.batchDraw();
+  }
+
   private clearAreaPool(): void {
     if (this.areaRect) this.areaRect.visible(false);
     if (this.areaLabel) this.areaLabel.visible(false);
     if (this.areaTooltip) this.areaTooltip.visible(false);
+    for (const node of this.polygonNodes) {
+      node.destroy();
+    }
+    this.polygonNodes = [];
   }
 
   clear(): void {

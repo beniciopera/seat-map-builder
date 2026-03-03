@@ -29,6 +29,7 @@ import { EditorEngine } from '@/src/engine/EditorEngine';
 import { SelectionTool } from '@/src/engine/tools/SelectionTool';
 import { SeatPlacementTool } from '@/src/engine/tools/SeatPlacementTool';
 import { AreaTool } from '@/src/engine/tools/AreaTool';
+import { VectorBrushTool } from '@/src/engine/tools/VectorBrushTool';
 import { TableTool } from '@/src/engine/tools/TableTool';
 import { PanTool } from '@/src/engine/tools/PanTool';
 import { GridTool } from '@/src/engine/tools/GridTool';
@@ -225,6 +226,7 @@ export function EditorShell() {
     engine.tools.register(new SelectionTool());
     engine.tools.register(new SeatPlacementTool());
     engine.tools.register(new AreaTool());
+    engine.tools.register(new VectorBrushTool());
     engine.tools.register(new TableTool());
     engine.tools.register(new PanTool());
     engine.tools.register(new GridTool());

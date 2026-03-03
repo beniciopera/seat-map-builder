@@ -13,11 +13,18 @@ export class AreaTool extends BaseTool {
   readonly cursor = 'crosshair';
 
   private startPoint: Point | null = null;
-  private areaCounter = 0;
+  private currentAreaLabel = 'Area 1';
 
   onPointerDown(event: EditorInputEvent): void {
     if (!this.engine || event.button !== 0) return;
 
+    // Starting a new shape: clear selection so the previous shape is not still selected
+    if (!event.shiftKey) {
+      this.engine.selection.clearSelection();
+      this.engine.events.emit('selection:changed', { selectedIds: [] });
+    }
+
+    this.currentAreaLabel = this.engine.nextAvailableAreaLabel(1).label;
     this.startPoint = event.worldPoint;
     this.transition('drawing');
   }
@@ -46,7 +53,7 @@ export class AreaTool extends BaseTool {
       this.engine.events.emit('preview:area', {
         rect: { x, y, width, height },
         color: '#2196F3',
-        label: `Area ${this.areaCounter + 1}`,
+        label: this.currentAreaLabel,
         cursorPoint: event.worldPoint,
       });
     }
@@ -67,7 +74,7 @@ export class AreaTool extends BaseTool {
         const area: Area = {
           id: generateElementId(),
           type: 'area',
-          label: `Area ${++this.areaCounter}`,
+          label: this.currentAreaLabel,
           color: '#2196F3',
           rowIds: [],
           locked: false,
@@ -81,6 +88,8 @@ export class AreaTool extends BaseTool {
 
         const cmd = new CreateAreaCommand(this.engine, area);
         this.engine.history.execute(cmd);
+        this.engine.selection.select(area.id);
+        this.engine.events.emit('selection:changed', { selectedIds: [area.id] });
       }
 
       // Clear preview and guidelines

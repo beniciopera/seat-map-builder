@@ -310,12 +310,21 @@ export class SelectionLayer {
       }
     }
 
-    // 6b. Show resize handles if exactly one area is selected
+    // 6b. Show resize handles if exactly one area is selected (rect only, not polygon)
     if (selectedIds.length === 1 && !isSeatPicker) {
       const singleEl = engine.state.get(selectedIds[0]);
       if (singleEl && isArea(singleEl)) {
-        this.showResizeHandles(singleEl as Area);
+        const area = singleEl as Area;
+        if (!area.vertices || area.vertices.length < 3) {
+          this.showResizeHandles(area);
+        } else {
+          this.clearResizeHandles();
+        }
+      } else {
+        this.clearResizeHandles();
       }
+    } else {
+      this.clearResizeHandles();
     }
 
     // 7. Multi-selection bounding box (hide during rotation)

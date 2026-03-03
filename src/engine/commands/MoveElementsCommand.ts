@@ -1,8 +1,9 @@
 import type { Command } from './Command';
-import type { ElementId, MapElement, Row } from '@/src/domain/types';
-import { isRow } from '@/src/domain/types';
+import type { ElementId, MapElement, Row, Area } from '@/src/domain/types';
+import { isRow, isArea } from '@/src/domain/types';
 import type { Point } from '@/src/domain/geometry';
 import type { EditorEngine } from '../EditorEngine';
+import { boundsFromVertices, centerOfVertices } from '@/src/domain/polygon';
 
 export class MoveElementsCommand implements Command {
   readonly name = 'Move Elements';
@@ -29,15 +30,30 @@ export class MoveElementsCommand implements Command {
     for (const [id, pos] of positions) {
       const el = this.engine.state.get(id);
       if (!el) continue;
-      let merged = {
-        ...el,
-        transform: { ...el.transform, position: pos },
-        bounds: { ...el.bounds, x: pos.x - el.bounds.width / 2, y: pos.y - el.bounds.height / 2 },
-      } as MapElement;
+      const oldPos = el.transform.position;
+      const dx = pos.x - oldPos.x;
+      const dy = pos.y - oldPos.y;
+
+      let merged: MapElement;
+      if (isArea(el) && (el as Area).vertices && (el as Area).vertices!.length >= 3) {
+        const area = el as Area;
+        const newVertices = area.vertices!.map((v) => ({ x: v.x + dx, y: v.y + dy }));
+        const bounds = boundsFromVertices(newVertices);
+        merged = {
+          ...area,
+          transform: { ...area.transform, position: pos },
+          bounds,
+          vertices: newVertices,
+        } as MapElement;
+      } else {
+        merged = {
+          ...el,
+          transform: { ...el.transform, position: pos },
+          bounds: { ...el.bounds, x: pos.x - el.bounds.width / 2, y: pos.y - el.bounds.height / 2 },
+        } as MapElement;
+      }
       // Translate curveDefinition.center when moving a row
       if (isRow(merged) && merged.curveDefinition) {
-        const dx = pos.x - el.transform.position.x;
-        const dy = pos.y - el.transform.position.y;
         merged = {
           ...merged,
           curveDefinition: {

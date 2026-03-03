@@ -18,6 +18,7 @@ export interface EditorEventMap {
   'preview:table': { center: Point; tableRadius: number; seatCount: number; seatGap: number; label: string };
   'preview:grid': { seats: Point[]; anchorPoint: Point; cursorPoint: Point; angle: number; rows: number; cols: number };
   'preview:area': { rect: Rect; color: string; label: string; cursorPoint: Point };
+  'preview:polygon': { points: Point[]; cursorPoint: Point; color: string; label: string; angleDeg?: number };
   'preview:rotation': { cursorPoint: Point; angle: number };
   'preview:clear': Record<string, never>;
   'boxselect:update': { rect: Rect };

@@ -51,6 +51,9 @@ export function useKeyboardShortcuts(engine: EditorEngine) {
         case 'a':
           if (!ctrl) engine.tools.setActiveTool('area');
           break;
+        case 'b':
+          if (!ctrl) engine.tools.setActiveTool('vector-brush');
+          break;
         case 't':
           engine.tools.setActiveTool('table');
           break;

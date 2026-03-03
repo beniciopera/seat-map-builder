@@ -185,6 +185,12 @@ export class KonvaRenderer {
     );
 
     this.unsubscribers.push(
+      this.engine.events.on('preview:polygon', ({ points, cursorPoint, color, label, angleDeg }) => {
+        this.previewLayer.showPolygonPreview(points, cursorPoint, color, label, angleDeg);
+      }),
+    );
+
+    this.unsubscribers.push(
       this.engine.events.on('preview:rotation', ({ cursorPoint, angle }) => {
         this.previewLayer.showRotationTooltip(cursorPoint, angle);
       }),
