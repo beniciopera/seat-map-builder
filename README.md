@@ -99,13 +99,13 @@ Un event emitter in-process con tipos estrictos para todos los eventos (`element
 
 ### Snap + Guidelines
 
-`SnapEngine` detecta alineaciones con elementos cercanos (ejes y ángulos). `GuidelinesEngine` convierte los matches en líneas infinitas visualizadas en el canvas como guías de alineación.
+`SnapEngine` detecta alineaciones con elementos cercanos (ejes y ángulos). `GuidelinesEngine` convierte los matches en líneas infinitas visualizadas en el canvas como guías de alineación. `VectorSnap` permite snap a vértices y aristas de elementos existentes (usado por la herramienta Vector Brush para ángulos y cierre de polígonos).
 
 ---
 
 ## Herramientas
 
-El editor incluye 7 herramientas, cada una con su propia máquina de estados interna:
+El editor incluye 8 herramientas, cada una con su propia máquina de estados interna:
 
 
 | Herramienta     | Tecla | Descripción                                                     |
@@ -115,6 +115,7 @@ El editor incluye 7 herramientas, cada una con su propia máquina de estados int
 | **Grid**        | `G`   | Generar grilla de filas×columnas con previsualización           |
 | **Table**       | `T`   | Crear mesas redondas con asientos circulares                    |
 | **Area**        | `A`   | Dibujar áreas rectangulares                                     |
+| **Vector Brush**| `B`   | Dibujar áreas poligonales con clics; snap a vértices/aristas y ángulos; cerrar acercando al primer punto |
 | **Seat Picker** | `P`   | Seleccionar asientos para asignar estado/categoría              |
 | **Pan**         | `H`   | Desplazar la vista del canvas                                   |
 
@@ -128,6 +129,7 @@ El editor incluye 7 herramientas, cada una con su propia máquina de estados int
 | `Ctrl/Cmd + Y` / `Ctrl/Cmd + Shift + Z` | Rehacer                 |
 | `Ctrl/Cmd + A`                          | Seleccionar todo        |
 | `Delete` / `Backspace`                  | Eliminar selección      |
+| `Escape`                                | Cancelar herramienta (ej. dibujo de polígono) |
 | `Space` (mantener)                      | Pan temporal            |
 | `Alt/Option + Scroll`                   | Zoom centrado en cursor |
 | `Scroll/Shift + Scroll`                 | Pan                     |
@@ -211,8 +213,12 @@ interface Area extends BaseElement {
   readonly label: string;
   readonly color: string;
   readonly rowIds: readonly ElementId[];
+  /** Vértices en espacio mundo. Si está presente, el área es poligonal; si no, es rectángulo por bounds. */
+  readonly vertices?: readonly Point[];
 }
 ```
+
+Las áreas pueden ser rectangulares (solo `bounds`) o poligonales (Vector Brush: `vertices`).
 
 ### MapLayout
 
