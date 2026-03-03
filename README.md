@@ -97,7 +97,7 @@ Un event emitter in-process con tipos estrictos para todos los eventos (`element
 
 ### Snap + Guidelines
 
-`SnapEngine` detecta alineaciones con elementos cercanos (ejes y ángulos). `GuidelinesEngine` convierte los matches en líneas infinitas visualizadas en el canvas como guías de alineación. `VectorSnap` permite snap a vértices y aristas de elementos existentes (usado por la herramienta Vector Brush para ángulos y cierre de polígonos).
+`SnapEngine` detecta alineaciones importantes y mejora la experiencia de usuario. `GuidelinesEngine` convierte los matches en líneas infinitas visualizadas en el canvas como guías de alineación. `VectorSnap` permite snap a vértices y aristas de elementos existentes (usado por la herramienta Vector Brush para ángulos y cierre de polígonos).
 
 ---
 
@@ -247,13 +247,11 @@ interface MapLayout {
 
 - **Sin soporte mobile/touch**: no hay gestos de pinch-to-zoom ni interacciones táctiles.
 - **Sin persistencia automática**: el usuario debe exportar/importar manualmente. No hay auto-save.
-- **Performance con miles de elementos**: aunque el spatial index optimiza las consultas, el rendering de Konva podría degradarse con cantidades muy grandes de elementos (>5000 asientos) ya que no se implementó culling por viewport.
 - **Limite de historial para UNDO/REDO**: el sistema guarda hasta 100 operaciones.
 
 ### Mejoras Posibles
 
 - Implementar auto-save con localStorage o IndexedDB
 - Soporte táctil
-- Viewport culling (renderizar solo lo visto en pantalla) para mejorar performance con mapas grandes
 - Copiar/pegar elementos
 
