@@ -87,8 +87,6 @@ Si bien react-konva simplifica la integración con React mediante un enfoque dec
 
 El `EditorEngine` es completamente agnóstico al framework. No conoce React ni Konva. El `KonvaRenderer` se suscribe a eventos del engine y redibuja solo lo que cambió. React lee del store Zustand (que se actualiza vía el bridge `engineBridge.ts`) y nunca habla con el renderer directamente.
 
-Se eligió Konva.js en modo imperativo (sin `react-konva`) para tener control total del ciclo de renderizado y evitar re-renders innecesarios de React al manipular cientos de elementos en el canvas.
-
 ### Command Pattern (Undo/Redo)
 
 Toda mutación al mapa pasa por un objeto `Command` con métodos `execute()` y `undo()`. Esto garantiza undo/redo completo para cualquier operación.
