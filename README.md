@@ -14,7 +14,7 @@ Zustand
 
 ### Requisitos
 
-- Node.js 20+
+- Node.js
 - npm
 
 ### Instalación
@@ -44,7 +44,11 @@ Abrir [http://localhost:3000](http://localhost:3000) en el navegador.
 
 ### Stack
 
-Personalmente opté por no implementar un backend con base de datos, ya que consideré que añadía una complejidad innecesaria para el alcance del MVP. Los datos se mantienen en memoria y el estado de la interfaz se gestiona mediante la store, lo cual resulta más que suficiente y funcional para el propósito actual de la aplicación.
+Opté por no implementar un backend con base de datos, ya que consideré que añadía una complejidad innecesaria para el alcance del MVP. Los datos se mantienen en memoria y el estado de la interfaz se gestiona mediante la store, lo cual resulta más que suficiente y funcional para el propósito actual de la aplicación. 
+
+Preferí utilizar Konva en su versión vanilla porque el editor requiere manipulaciones geométricas complejas en tiempo real (rotaciones acumulativas, curvaturas, redistribución de asientos, guidelines dinámicas y undo/redo estructural). Trabajar de forma imperativa me permitió tener control directo sobre el ciclo de renderizado del canvas y optimizar interacciones críticas con muchos nodos en escena.
+
+Si bien react-konva simplifica la integración con React mediante un enfoque declarativo, en este contexto prioricé el control y la previsibilidad del render. Además, hoy en día la asistencia de herramientas de IA reduce significativamente la fricción de trabajar a un nivel más bajo, por lo que la ventaja en simplicidad que ofrece react-konva no resultaba determinante para este proyecto.
 
 
 | Tecnología          | Uso                                                    |
