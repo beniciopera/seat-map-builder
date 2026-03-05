@@ -56,7 +56,6 @@ Si bien react-konva simplifica la integración con React mediante un enfoque dec
 | **Konva.js v10**    | Rendering 2D en canvas (imperativo, sin `react-konva`) |
 | **Zustand v5**      | Estado reactivo de UI                                  |
 | **MUI v7**          | Componentes de interfaz (toolbar, paneles, diálogos)   |
-| **Tailwind CSS v4** | Estilos utilitarios                                    |
 | **nanoid v5**       | Generación de IDs únicos                               |
 
 
